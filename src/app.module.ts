@@ -1,10 +1,9 @@
-import { Module } from '@nestjs/common';
-import { OcpiController } from './ocpi.controller';
-import { OcpiService } from './ocpi.service';
+import { Module } from "@nestjs/common";
+import { OcpiModule } from "./ocpi/ocpi.module";
 
 @Module({
-  imports: [],
-  controllers: [OcpiController],
-  providers: [OcpiService],
+  imports: [OcpiModule],
+  controllers: [],
+  providers: [],
 })
 export class AppModule {}
