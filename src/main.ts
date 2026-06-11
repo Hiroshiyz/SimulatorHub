@@ -1,4 +1,5 @@
 import { NestFactory } from "@nestjs/core";
+import "dotenv/config";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import { join } from "path";
 import { AppModule } from "./app.module";
