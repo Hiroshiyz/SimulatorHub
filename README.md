@@ -13,3 +13,38 @@ This repository features an EV charging infrastructure HUB Simulator built with 
 - **充電樁數據動態收集 (EVSE Telemetry Aggregation)**：模擬底層充電樁即時回傳的狀態（Status）、充電會話（Sessions）與充電明細（CDRs），並由 HUB 統一整合。
 - **上層 EMSP 數據轉發 (Data Routing)**：將收集到的 CPO 數據，依據路由規則精準轉發或提供給指定的 EMSP。
 - **架構 (Framework)**：內建全域 OCPI 請求/回應 Log 攔截器 (Interceptor)、多租戶動態限流 (Guard) 以及客製化身分上下文裝飾器 (`@CurrentParty()`)。
+
+## 環境設置 / env set up
+
+- **Env**
+
+```env
+CREDENTIALS_TOKEN_B=fRq8p2jwOg_Wy1aV2H3rTSolPpmlMSbDw7J3gQBJmZ4
+EMSP_BASE_URL=http://localhost:5053
+```
+
+## 啟動測試 / Start testing
+
+```bash
+#Testing
+npm run test:cov
+```
+```bash
+# Server
+npm run start:dev
+
+# Client
+npm run client:dev
+```
+
+## 未來開發計畫 / To-Do List
+
+### 1. 後端架構增強 (Backend Architecture Enhancements)
+- [ ] **資料持久化 (Persistence)**：導入 **Prisma ORM** 與 **PostgreSQL**，將漫遊拓撲（Locations）、充電樁（EVSEs）、費率（Tariffs）以及交易資料（Sessions, CDRs）進行實體資料庫持久化。
+- [ ] **高併發與快取 (Redis Caching)**：使用 **Redis** 快取熱點資料，並處理多租戶 Token A/B/C 的動態 Token 驗證與過期管理。
+- [ ] **非同步事件隊列 (Message Queue)**：導入消息隊列（如 **BullMQ** 或 **RabbitMQ**），將 CPO 回傳的 Telemetry 數據以及漫遊指令轉發設計為非同步隊列，確保大流量下的可靠性與真實 HUB 模擬。
+
+### 2. 前端介面與體驗優化 (Frontend UI/UX Improvements)
+- [ ] **充電樁狀態動畫 (EVSE Telemetry Animation)**：在 Dashboard 上加入直觀且精美的充電樁主體狀態動畫（例如：閒置、充電中、異常），使模擬狀態更具視覺反饋。
+- [ ] **版面佈局調整 (Fixed Terminal Layout)**：重構網頁版面，將 **Terminal/日誌主控台固定於畫面右側**，方便在發送模擬測試時即時對照右側日誌。
+- [ ] **組件模組化重構 (Component Refactoring)**：將目前單一的 `App.tsx` 拆解重構為多個獨立的頁面元件（如 `Sidebar`、`Console`、`TelemetryTab`、`TransactionTab` 等），提升前端程式碼可維護性。
