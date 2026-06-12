@@ -38,6 +38,7 @@ interface Location {
     longitude?: string;
   };
   evses: Evse[];
+  rawJson?: unknown;
 }
 
 interface LogEntry {
@@ -169,8 +170,8 @@ export default function App() {
     };
     init();
 
-    const statusTimer = setInterval(checkStatus, 10000);
-    const dbTimer = setInterval(fetchDatabaseState, 10000); // sync db status every 5s
+    const statusTimer = setInterval(checkStatus, 15000);
+    const dbTimer = setInterval(fetchDatabaseState, 15000); // sync db status every 5s
 
     return () => {
       active = false;
@@ -258,11 +259,14 @@ export default function App() {
     }
   };
 
-  // Quick seed initialization for 4 stations
-  const initializeMockStations = async () => {
+  // Synchronize Location to HUB and EMSP
+  const handleSyncLocation = async () => {
     const defaultPayload = {
       id: "loc_001",
       name: "新板特區特快充電站 (Mock CPO)",
+      operator: {
+        name: "New Taipei Charging Station CPO",
+      },
       address: "新北市板橋區中山路一段161號",
       city: "板橋區",
       postal_code: "220",
@@ -347,12 +351,55 @@ export default function App() {
       ],
     };
 
+    let payload: unknown = defaultPayload;
+    if (locations.length > 0 && locations[0].rawJson) {
+      payload = {
+        ...(locations[0].rawJson as Record<string, unknown>),
+        operator: {
+          name: "New Taipei Charging Station CPO",
+        },
+      };
+    }
+
     await sendRequest(
-      "Initialize Mock Stations",
+      "Sync Location -> loc_001",
       "/simulator/simulate/locations/TW/CPO/loc_001",
       "POST",
-      defaultPayload,
+      payload,
     );
+  };
+
+  // Synchronize Tariff to HUB and EMSP
+  const handleSyncTariff = async () => {
+    const tariffPayload = {
+      id: "tariff_001",
+      currency: "TWD",
+      elements: [
+        {
+          price_components: [
+            {
+              type: "ENERGY",
+              price: 8.5,
+              step_size: 1,
+            },
+          ],
+        },
+      ],
+      last_updated: new Date().toISOString(),
+    };
+
+    await sendRequest(
+      "Sync Tariff -> tariff_001",
+      "/simulator/simulate/tariffs/TW/CPO/tariff_001",
+      "POST",
+      tariffPayload,
+    );
+  };
+
+  // Quick seed initialization for 4 stations
+  const initializeMockStations = async () => {
+    await handleSyncLocation();
+    await handleSyncTariff();
   };
 
   // Change EVSE Status manually (PATCH)
@@ -450,7 +497,7 @@ export default function App() {
 
       // Sync database overview
       fetchDatabaseState();
-    }, 5000);
+    }, 15000);
 
     return () => clearInterval(chargingTimer);
   }, [activeChargingSessions, locations]);
@@ -942,6 +989,42 @@ export default function App() {
                   </div>
                 )}
               </div>
+
+              {locations.length > 0 && (
+                <div className="card" style={{ marginTop: "20px" }}>
+                  <h3 className="card-title">OCPI 漫遊數據同步控制</h3>
+                  <p
+                    style={{
+                      color: "var(--text-secondary)",
+                      lineHeight: "1.6",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    在 OCPI 連線架構下，CPO 模擬端可在此主動將「場站資訊 (Location)」與「費率規格 (Tariff)」同步傳送給 HUB，並由 HUB 即時轉發給對接的 EMSP，完成漫遊站點對接。
+                  </p>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "12px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <button
+                      className="button"
+                      onClick={handleSyncLocation}
+                      style={{ background: "var(--accent-purple)", color: "white" }}
+                    >
+                      傳送場站資訊 (PUT Location)
+                    </button>
+                    <button
+                      className="button button-secondary"
+                      onClick={handleSyncTariff}
+                    >
+                      傳送費率資訊 (PUT Tariff)
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
 

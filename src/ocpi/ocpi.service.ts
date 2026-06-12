@@ -35,7 +35,7 @@ export class OcpiService {
         if (emsp.credential && emsp.credential.url && emsp.credential.tokenC) {
           const url = `${emsp.credential.url}/ocpi/2.2.1/${subPath}`;
           const headers = {
-            Authorization: `Token ${emsp.credential.tokenC}`, // Use Token C provided by EMSP
+            Authorization: `bearer ${emsp.credential.tokenC}`, // Use Token C provided by EMSP
             "Content-Type": "application/json; charset=utf-8",
             "OCPI-to-party-id": emsp.partyId,
             "OCPI-to-country-code": emsp.countryCode,
@@ -43,7 +43,9 @@ export class OcpiService {
             "OCPI-from-country-code": "TW",
           };
 
-          this.logger.log(`Forwarding ${method} to EMSP ${emsp.partyId} at: ${url}`);
+          this.logger.log(
+            `Forwarding ${method} to EMSP ${emsp.partyId} at: ${url}`,
+          );
 
           try {
             if (method === "PUT") {
@@ -56,7 +58,9 @@ export class OcpiService {
           } catch (err: any) {
             this.logger.error(
               `Failed to forward to EMSP ${emsp.partyId}: ${
-                err.response?.data ? JSON.stringify(err.response.data) : err.message
+                err.response?.data
+                  ? JSON.stringify(err.response.data)
+                  : err.message
               }`,
             );
           }
@@ -75,7 +79,9 @@ export class OcpiService {
     locationId: string,
     payload: any,
   ) {
-    this.logger.log(`[Tenant: ${party.id}] Received PUT Location: ${locationId}`);
+    this.logger.log(
+      `[Tenant: ${party.id}] Received PUT Location: ${locationId}`,
+    );
 
     // Upsert the main Location record
     await this.prisma.location.upsert({
@@ -154,7 +160,9 @@ export class OcpiService {
     evseUid: string,
     payload: any,
   ) {
-    this.logger.log(`[Tenant: ${party.id}] Received PATCH EVSE: ${evseUid} for location: ${locationId}`);
+    this.logger.log(
+      `[Tenant: ${party.id}] Received PATCH EVSE: ${evseUid} for location: ${locationId}`,
+    );
 
     await this.prisma.evse.upsert({
       where: {
@@ -196,7 +204,7 @@ export class OcpiService {
     payload: any,
   ) {
     this.logger.log(`[Tenant: ${party.id}] Received PUT Tariff: ${tariffId}`);
-    
+
     // Forward the Tariff sync to EMSP
     await this.forwardToEmsps(
       "PUT",
