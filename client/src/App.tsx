@@ -1,6 +1,45 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from "react";
 
 // Interfaces
+interface EvseConnector {
+  id: string;
+  format: string;
+  standard: string;
+  power_type: string;
+  tariff_ids: string[];
+  max_voltage: number;
+  max_amperage: number;
+  max_electric_power: number;
+}
+
+interface Evse {
+  uid: string;
+  evse_id: string | null;
+  status: string;
+  rawJson?: {
+    connectors?: {
+      power_type?: string;
+      max_electric_power?: number;
+    }[];
+  };
+  connectors?: EvseConnector[];
+}
+
+interface Location {
+  partyId: string;
+  id: string;
+  name: string | null;
+  address: string;
+  city: string;
+  postalCode: string | null;
+  country: string;
+  coordinates: {
+    latitude?: string;
+    longitude?: string;
+  };
+  evses: Evse[];
+}
+
 interface LogEntry {
   id: string;
   time: string;
@@ -12,119 +51,108 @@ interface LogEntry {
   success: boolean;
 }
 
+interface DbSession {
+  id: string;
+  evseUid: string;
+  kwh: number;
+  status: string;
+  updatedAt: string;
+}
+
+interface DbCdr {
+  id: string;
+  createdAt: string;
+  rawJson?: {
+    total_cost?: {
+      incl_vat?: number;
+    };
+    total_time?: number;
+    total_energy?: number;
+  };
+}
+
+interface ActiveSessionState {
+  sessionId: string;
+  evseUid: string;
+  locationId: string;
+  kwh: number;
+  soc: number;
+  cost: number;
+  startTime: string;
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'telemetry' | 'transactions' | 'console'>('overview');
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "stations" | "transactions"
+  >("overview");
   const [isOnline, setIsOnline] = useState<boolean>(false);
-  const [serverVersion, setServerVersion] = useState<string>('Unknown');
+  const [serverVersion, setServerVersion] = useState<string>("Unknown");
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [targetCpoUrl, setTargetCpoUrl] = useState<string>('http://localhost:3000');
+  const [targetCpoUrl] = useState<string>("http://localhost:3030");
 
-  // Input states
-  const [countryCode, setCountryCode] = useState('TW');
-  const [partyId, setPartyId] = useState('NPT');
-  const [locationId, setLocationId] = useState('loc_001');
-  const [tariffId, setTariffId] = useState('tariff_001');
-  const [sessionId, setSessionId] = useState('session_id_123');
-  const [evseUid, setEvseUid] = useState('evse_uid_123');
-  const [evseStatus, setEvseStatus] = useState('AVAILABLE');
-  const [transactionNo, setTransactionNo] = useState('txn_001');
+  // Database states
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [sessions, setSessions] = useState<DbSession[]>([]);
+  const [cdrs, setCdrs] = useState<DbCdr[]>([]);
 
-  // Payload templates
-  const [locationPayload, setLocationPayload] = useState(JSON.stringify({
-    operator: { name: "Operator Name" },
-    name: "Station Name",
-    city: "Taipei",
-    state: "Taipei City",
-    address: "No. 1, Sec. 1, Xinyi Rd.",
-    postal_code: "100",
-    coordinates: { latitude: "25.0339", longitude: "121.5645" },
-    time_zone: "Asia/Taipei",
-    parking_type: "ON_STREET",
-    opening_times: "24/7",
-    charging_when_closed: true,
-    evses: [
-      {
-        uid: "evse_uid_123",
-        status: "AVAILABLE",
-        evse_id: "TW*NPT*E*123",
-        floor_level: "1F",
-        capabilities: ["REMOTE_START_STOP_ALLOWED"],
-        last_updated: new Date().toISOString(),
-        physical_reference: "Ref-123",
-        connectors: [
-          {
-            id: "1",
-            format: "CABLE",
-            standard: "IEC_62196_T2",
-            power_type: "AC_3PHASE",
-            tariff_ids: ["tariff_001"],
-            max_voltage: 400,
-            max_amperage: 32,
-            max_electric_power: 22000,
-            last_updated: new Date().toISOString()
-          }
-        ]
+  // RWD & UI layout states
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  const [terminalExpanded, setTerminalExpanded] = useState<boolean>(false);
+  const [filterMethod, setFilterMethod] = useState<string>("ALL");
+
+  // Interactive flow animation state
+  const [flowStep, setFlowStep] = useState<"idle" | "cpo" | "hub" | "emsp">(
+    "idle",
+  );
+
+  // Selection & Input states
+  const [selectedEvseUid, setSelectedEvseUid] = useState<string | null>(null);
+  const [customEvseStatus, setCustomEvseStatus] = useState<string>("AVAILABLE");
+  const [newSessionId, setNewSessionId] = useState<string>("");
+
+  // Client-side local active charging sessions simulation tracker
+  const [activeChargingSessions, setActiveChargingSessions] = useState<{
+    [evseUid: string]: ActiveSessionState;
+  }>({});
+
+  const terminalBodyRef = useRef<HTMLDivElement>(null);
+
+  // Fetch all databases (locations, sessions, CDRs) from simulator backend
+  const fetchDatabaseState = async () => {
+    try {
+      const [locRes, sessRes, cdrRes] = await Promise.all([
+        fetch("/simulator/locations"),
+        fetch("/simulator/sessions"),
+        fetch("/simulator/cdrs"),
+      ]);
+
+      if (locRes.ok) {
+        const locData = await locRes.json();
+        setLocations(locData);
       }
-    ]
-  }, null, 2));
-
-  const [tariffPayload, setTariffPayload] = useState(JSON.stringify({
-    currency: "TWD",
-    type: "AD_HOC",
-    tariff_alt_url: "https://cpo.com/tariffs/001",
-    last_updated: new Date().toISOString(),
-    tariff_alt_text: [
-      { language: "zh", text: "標準費率" }
-    ],
-    elements: [
-      {
-        price_components: [
-          { type: "ENERGY", price: 8.5, vat: 0.05, step_size: 1 }
-        ]
+      if (sessRes.ok) {
+        const sessData = await sessRes.json();
+        setSessions(sessData);
       }
-    ]
-  }, null, 2));
-
-  const [sessionPayload, setSessionPayload] = useState(JSON.stringify({
-    status: "ACTIVE",
-    cdr_token: "token_abc123",
-    kwh: 5.4,
-    total_cost: { excl_vat: 45.9, incl_vat: 48.2 },
-    charging_periods: [
-      {
-        dimensions: [
-          { type: "CURRENT", volume: 16 },
-          { type: "POWER", volume: 11 },
-          { type: "STATE_OF_CHARGE", volume: 45 },
-          { type: "ENERGY", volume: 5.4 }
-        ]
+      if (cdrRes.ok) {
+        const cdrData = await cdrRes.json();
+        setCdrs(cdrData);
       }
-    ],
-    last_updated: new Date().toISOString()
-  }, null, 2));
+    } catch (err) {
+      console.error("Failed to query database state:", err);
+    }
+  };
 
-  const [cdrPayload, setCdrPayload] = useState(JSON.stringify({
-    authorization_reference: "session_id_123",
-    total_cost: { excl_vat: 120.0, incl_vat: 126.0 },
-    total_parking_cost: { excl_vat: 0.0, incl_vat: 0.0 },
-    total_energy: 15.0,
-    total_time: 3600,
-    end_date_time: new Date().toISOString()
-  }, null, 2));
-
-  // Check connection status to NestJS server
+  // Check connection status & retrieve version details
   useEffect(() => {
     let active = true;
     const checkStatus = async () => {
       try {
-        const res = await fetch('/ocpi/versions');
+        const res = await fetch("/simulator/health");
         if (res.ok) {
-          const body = await res.json();
           if (!active) return;
           setIsOnline(true);
-          if (body.data && body.data.length > 0) {
-            setServerVersion(body.data[0].version);
-          }
+          setServerVersion("2.2.1");
         } else {
           if (!active) return;
           setIsOnline(false);
@@ -134,18 +162,39 @@ export default function App() {
         setIsOnline(false);
       }
     };
-    
-    // Call asynchronously to avoid warning
-    checkStatus();
-    const timer = setInterval(checkStatus, 5000);
+
+    const init = async () => {
+      await checkStatus();
+      await fetchDatabaseState();
+    };
+    init();
+
+    const statusTimer = setInterval(checkStatus, 10000);
+    const dbTimer = setInterval(fetchDatabaseState, 10000); // sync db status every 5s
+
     return () => {
       active = false;
-      clearInterval(timer);
+      clearInterval(statusTimer);
+      clearInterval(dbTimer);
     };
   }, []);
 
-  // Logger helper
-  const addLog = (action: string, method: string, url: string, payload: unknown, response: unknown, success: boolean) => {
+  // Scroll to bottom of terminal when logs update
+  useEffect(() => {
+    if (terminalBodyRef.current) {
+      terminalBodyRef.current.scrollTop = terminalBodyRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  // Log activity appender
+  const addLog = (
+    action: string,
+    method: string,
+    url: string,
+    payload: unknown,
+    response: unknown,
+    success: boolean,
+  ) => {
     const newEntry: LogEntry = {
       id: Math.random().toString(36).substring(2, 9),
       time: new Date().toLocaleTimeString(),
@@ -154,348 +203,1455 @@ export default function App() {
       url,
       payload,
       response,
-      success
+      success,
     };
-    setLogs(prev => [newEntry, ...prev]);
+    setLogs((prev) => [...prev, newEntry]);
   };
 
-  // Generic request handler
-  const sendRequest = async (action: string, endpoint: string, method: 'POST' | 'PUT' | 'PATCH', rawBody?: string) => {
-    let parsedBody: unknown = null;
-    if (rawBody) {
-      try {
-        parsedBody = JSON.parse(rawBody);
-      } catch {
-        alert('Invalid JSON structure. Please check the editor content.');
-        return;
+  // Trigger flowchart visual animation path
+  const triggerFlowAnimation = (hasForwarding = true) => {
+    setFlowStep("cpo");
+    setTimeout(() => {
+      setFlowStep("hub");
+      if (hasForwarding) {
+        setTimeout(() => {
+          setFlowStep("emsp");
+          setTimeout(() => setFlowStep("idle"), 2000);
+        }, 800);
+      } else {
+        setTimeout(() => setFlowStep("idle"), 2000);
       }
-    }
+    }, 600);
+  };
 
+  // Generic request sender
+  const sendRequest = async (
+    action: string,
+    endpoint: string,
+    method: "POST" | "PUT" | "PATCH",
+    bodyObj?: unknown,
+    hasForwarding = true,
+  ) => {
     try {
       const options: RequestInit = {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { "Content-Type": "application/json" },
       };
-      if (parsedBody) {
-        options.body = JSON.stringify(parsedBody);
+      if (bodyObj) {
+        options.body = JSON.stringify(bodyObj);
       }
 
+      triggerFlowAnimation(hasForwarding);
       const res = await fetch(endpoint, options);
-      const resData = await res.json() as { status_message?: string; message?: string };
-      addLog(action, method, endpoint, parsedBody, resData, res.ok);
-      if (res.ok) {
-        setActiveTab('console');
-      } else {
-        alert(`API Error: ${resData.status_message || resData.message || 'Request failed'}`);
-      }
+      const resData = await res.json();
+
+      addLog(action, method, endpoint, bodyObj, resData, res.ok);
+
+      // Refresh DB state
+      await fetchDatabaseState();
+
+      return { success: res.ok, data: resData };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      addLog(action, method, endpoint, parsedBody, { error: errorMessage }, false);
-      alert(`Network Error: ${errorMessage}`);
+      addLog(action, method, endpoint, bodyObj, { error: errorMessage }, false);
+      return { success: false, error: errorMessage };
     }
   };
 
+  // Quick seed initialization for 4 stations
+  const initializeMockStations = async () => {
+    const defaultPayload = {
+      id: "loc_001",
+      name: "新板特區特快充電站 (Mock CPO)",
+      address: "新北市板橋區中山路一段161號",
+      city: "板橋區",
+      postal_code: "220",
+      country: "TWN",
+      coordinates: { latitude: "25.0123", longitude: "121.4657" },
+      parking_type: "ON_STREET",
+      opening_times: "24/7",
+      charging_when_closed: true,
+      evses: [
+        {
+          uid: "evse_uid_101",
+          evse_id: "TW*CPO*E*101",
+          status: "AVAILABLE",
+          capabilities: ["REMOTE_START_STOP_ALLOWED"],
+          connectors: [
+            {
+              id: "1",
+              format: "CABLE",
+              standard: "CCS_2",
+              power_type: "DC",
+              tariff_ids: ["tariff_001"],
+              max_voltage: 800,
+              max_amperage: 300,
+              max_electric_power: 120000,
+            },
+          ],
+        },
+        {
+          uid: "evse_uid_102",
+          evse_id: "TW*CPO*E*102",
+          status: "AVAILABLE",
+          capabilities: ["REMOTE_START_STOP_ALLOWED"],
+          connectors: [
+            {
+              id: "1",
+              format: "CABLE",
+              standard: "CCS_2",
+              power_type: "DC",
+              tariff_ids: ["tariff_001"],
+              max_voltage: 800,
+              max_amperage: 300,
+              max_electric_power: 120000,
+            },
+          ],
+        },
+        {
+          uid: "evse_uid_103",
+          evse_id: "TW*CPO*E*103",
+          status: "AVAILABLE",
+          capabilities: ["REMOTE_START_STOP_ALLOWED"],
+          connectors: [
+            {
+              id: "1",
+              format: "CABLE",
+              standard: "IEC_62196_T2",
+              power_type: "AC_3PHASE",
+              tariff_ids: ["tariff_001"],
+              max_voltage: 400,
+              max_amperage: 32,
+              max_electric_power: 22000,
+            },
+          ],
+        },
+        {
+          uid: "evse_uid_104",
+          evse_id: "TW*CPO*E*104",
+          status: "AVAILABLE",
+          capabilities: ["REMOTE_START_STOP_ALLOWED"],
+          connectors: [
+            {
+              id: "1",
+              format: "CABLE",
+              standard: "IEC_62196_T2",
+              power_type: "AC_3PHASE",
+              tariff_ids: ["tariff_001"],
+              max_voltage: 400,
+              max_amperage: 32,
+              max_electric_power: 22000,
+            },
+          ],
+        },
+      ],
+    };
+
+    await sendRequest(
+      "Initialize Mock Stations",
+      "/simulator/simulate/locations/TW/CPO/loc_001",
+      "POST",
+      defaultPayload,
+    );
+  };
+
+  // Change EVSE Status manually (PATCH)
+  const handlePatchStatus = async (
+    locationId: string,
+    evseUid: string,
+    nextStatus: string,
+  ) => {
+    const payload = {
+      status: nextStatus,
+      last_updated: new Date().toISOString(),
+    };
+    await sendRequest(
+      `Patch Status -> ${nextStatus}`,
+      `/simulator/simulate/locations/TW/CPO/${locationId}/${evseUid}`,
+      "POST", // Express routing simulator handles POST to forward PATCH
+      payload,
+    );
+  };
+
+  // Simulate Charging Telemetry interval (increments SoC/kWh every 5 seconds)
+  useEffect(() => {
+    const chargingTimer = setInterval(async () => {
+      const activeUids = Object.keys(activeChargingSessions);
+      if (activeUids.length === 0) return;
+
+      for (const uid of activeUids) {
+        const session = activeChargingSessions[uid];
+
+        // Locate this EVSE connector to see if it's DC or AC
+        let powerIncrement = 0.8; // default AC kWh increment
+        const maxSoc = 100;
+
+        const matchingEvse = locations
+          .flatMap((l) => l.evses)
+          .find((e) => e.uid === uid);
+
+        if (
+          matchingEvse &&
+          matchingEvse.rawJson?.connectors?.[0]?.power_type === "DC"
+        ) {
+          powerIncrement = 4.2; // faster DC charging
+        }
+
+        const nextSoc = Math.min(maxSoc, session.soc + 4);
+        const nextKwh = Number((session.kwh + powerIncrement).toFixed(2));
+        const nextCost = Number((nextKwh * 8.5).toFixed(1));
+
+        // Update local session state
+        setActiveChargingSessions((prev) => ({
+          ...prev,
+          [uid]: {
+            ...prev[uid],
+            soc: nextSoc,
+            kwh: nextKwh,
+            cost: nextCost,
+          },
+        }));
+
+        // Send telemetry Session PUT update to CPO receiver
+        const sessionPayload = {
+          id: session.sessionId,
+          start_date_time: session.startTime,
+          kwh: nextKwh,
+          cdr_token: {
+            uid: "token_abc123",
+            type: "RFID",
+            contract_id: "TW-EMSP-C1001",
+          },
+          auth_method: "AUTH_REQUEST",
+          location_id: session.locationId,
+          evse_uid: session.evseUid,
+          connector_id: "1",
+          status: "ACTIVE",
+          total_cost: {
+            excl_vat: Number((nextCost * 0.95).toFixed(2)),
+            incl_vat: nextCost,
+          },
+          last_updated: new Date().toISOString(),
+        };
+
+        // We set hasForwarding=true. This sends PUT and triggers flow lights
+        await fetch(
+          `/simulator/simulate/sessions/TW/CPO/${session.sessionId}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(sessionPayload),
+          },
+        );
+
+        // Trigger flowchart light update locally to indicate heartbeats
+        triggerFlowAnimation(true);
+      }
+
+      // Sync database overview
+      fetchDatabaseState();
+    }, 5000);
+
+    return () => clearInterval(chargingTimer);
+  }, [activeChargingSessions, locations]);
+
+  // Start simulated charging session
+  const startSimulatedCharging = async (
+    locationId: string,
+    evseUid: string,
+  ) => {
+    const generatedSessId =
+      newSessionId.trim() || `sess_${Math.floor(1000 + Math.random() * 9000)}`;
+    const startTimeStr = new Date().toISOString();
+
+    // 1. PATCH EVSE status to CHARGING
+    await handlePatchStatus(locationId, evseUid, "CHARGING");
+
+    // 2. Put Session to CPO receiver (State: ACTIVE)
+    const initialSessionPayload = {
+      id: generatedSessId,
+      start_date_time: startTimeStr,
+      kwh: 0.0,
+      cdr_token: {
+        uid: "token_abc123",
+        type: "RFID",
+        contract_id: "TW-EMSP-C1001",
+      },
+      auth_method: "AUTH_REQUEST",
+      location_id: locationId,
+      evse_uid: evseUid,
+      connector_id: "1",
+      status: "ACTIVE",
+      total_cost: { excl_vat: 0.0, incl_vat: 0.0 },
+      last_updated: startTimeStr,
+    };
+
+    const res = await sendRequest(
+      `Start Session [${generatedSessId}]`,
+      `/simulator/simulate/sessions/TW/CPO/${generatedSessId}`,
+      "POST",
+      initialSessionPayload,
+    );
+
+    if (res.success) {
+      // Record this session in local intervals
+      setActiveChargingSessions((prev) => ({
+        ...prev,
+        [evseUid]: {
+          sessionId: generatedSessId,
+          evseUid,
+          locationId,
+          kwh: 0.0,
+          soc: 15, // initial SoC
+          cost: 0.0,
+          startTime: startTimeStr,
+        },
+      }));
+      setNewSessionId("");
+    } else {
+      alert("Failed to start charging session.");
+    }
+  };
+
+  // Stop charging & Send CDR Receipt
+  const stopSimulatedCharging = async (evseUid: string) => {
+    const session = activeChargingSessions[evseUid];
+    if (!session) return;
+
+    const stopTimeStr = new Date().toISOString();
+
+    // 1. PUT Session to CPO receiver (State: COMPLETED)
+    const finalSessionPayload = {
+      id: session.sessionId,
+      start_date_time: session.startTime,
+      end_date_time: stopTimeStr,
+      kwh: session.kwh,
+      cdr_token: {
+        uid: "token_abc123",
+        type: "RFID",
+        contract_id: "TW-EMSP-C1001",
+      },
+      auth_method: "AUTH_REQUEST",
+      location_id: session.locationId,
+      evse_uid: session.evseUid,
+      connector_id: "1",
+      status: "COMPLETED",
+      total_cost: {
+        excl_vat: Number((session.cost * 0.95).toFixed(2)),
+        incl_vat: session.cost,
+      },
+      last_updated: stopTimeStr,
+    };
+
+    await sendRequest(
+      `Complete Session [${session.sessionId}]`,
+      `/simulator/simulate/sessions/TW/CPO/${session.sessionId}`,
+      "POST",
+      finalSessionPayload,
+    );
+
+    // 2. PATCH EVSE status back to AVAILABLE
+    await handlePatchStatus(session.locationId, evseUid, "AVAILABLE");
+
+    // 3. POST CDR Receipt to CPO receiver
+    const cdrPayload = {
+      id: `cdr_${session.sessionId.split("_")[1] || Math.floor(1000 + Math.random() * 9000)}`,
+      ctr_code: "TW",
+      party_id: "CPO",
+      start_date_time: session.startTime,
+      end_date_time: stopTimeStr,
+      kwh: session.kwh,
+      cdr_token: {
+        uid: "token_abc123",
+        type: "RFID",
+        contract_id: "TW-EMSP-C1001",
+      },
+      auth_method: "AUTH_REQUEST",
+      authorization_reference: session.sessionId,
+      total_cost: {
+        excl_vat: Number((session.cost * 0.95).toFixed(2)),
+        incl_vat: session.cost,
+      },
+      total_energy: session.kwh,
+      total_time: Math.floor(
+        (new Date(stopTimeStr).getTime() -
+          new Date(session.startTime).getTime()) /
+          1000,
+      ),
+      last_updated: stopTimeStr,
+    };
+
+    await sendRequest(
+      `Post CDR Receipt`,
+      "/simulator/simulate/cdrs",
+      "POST",
+      cdrPayload,
+    );
+
+    // Remove from active intervals
+    setActiveChargingSessions((prev) => {
+      const next = { ...prev };
+      delete next[evseUid];
+      return next;
+    });
+  };
+
+  // Find EVSE details
+  const allEvses = locations.flatMap((loc) =>
+    loc.evses.map((e) => ({
+      ...e,
+      locationId: loc.id,
+      locationName: loc.name,
+    })),
+  );
+
+  const selectedEvse = allEvses.find((e) => e.uid === selectedEvseUid);
+
+  // Filtered logs
+  const filteredLogs = logs.filter((log) => {
+    if (filterMethod === "ALL") return true;
+    return log.method === filterMethod;
+  });
+
   return (
     <div className="app-container">
-      {/* Sidebar */}
-      <aside className="sidebar">
+      {/* Sidebar Navigation */}
+      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="brand-section">
-          <div className="brand-logo">⚡</div>
-          <span className="brand-name">OCPI Simulator</span>
+          <div
+            className="brand-logo"
+            style={{
+              width: "auto",
+              padding: "0 10px",
+              fontSize: "13px",
+              textTransform: "uppercase",
+            }}
+          >
+            smart HUB
+          </div>
+          <span className="brand-name" style={{ textTransform: "uppercase" }}>
+            Simulator
+          </span>
         </div>
 
         <ul className="nav-links">
           <li>
-            <a 
-              className={`nav-item ${activeTab === 'overview' ? 'active' : ''}`}
-              onClick={() => setActiveTab('overview')}
+            <a
+              className={`nav-item ${activeTab === "overview" ? "active" : ""}`}
+              onClick={() => {
+                setActiveTab("overview");
+                setSidebarOpen(false);
+              }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              Overview
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+              系統架構 & 概觀
             </a>
           </li>
           <li>
-            <a 
-              className={`nav-item ${activeTab === 'telemetry' ? 'active' : ''}`}
-              onClick={() => setActiveTab('telemetry')}
+            <a
+              className={`nav-item ${activeTab === "stations" ? "active" : ""}`}
+              onClick={() => {
+                setActiveTab("stations");
+                setSidebarOpen(false);
+              }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
-              Telemetry Sender
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                <line x1="6" y1="6" x2="6.01" y2="6" />
+                <line x1="6" y1="18" x2="6.01" y2="18" />
+              </svg>
+              充電樁模擬控制區 ({allEvses.length})
             </a>
           </li>
           <li>
-            <a 
-              className={`nav-item ${activeTab === 'transactions' ? 'active' : ''}`}
-              onClick={() => setActiveTab('transactions')}
+            <a
+              className={`nav-item ${activeTab === "transactions" ? "active" : ""}`}
+              onClick={() => {
+                setActiveTab("transactions");
+                setSidebarOpen(false);
+              }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-              Transactions
-            </a>
-          </li>
-          <li>
-            <a 
-              className={`nav-item ${activeTab === 'console' ? 'active' : ''}`}
-              onClick={() => setActiveTab('console')}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-              Live Logs ({logs.length})
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              </svg>
+              漫遊交易紀錄 ({sessions.length})
             </a>
           </li>
         </ul>
 
         <div className="sidebar-footer">
-          <p>OCPI Version 2.2.1</p>
-          <p style={{ marginTop: '4px' }}>Status: {isOnline ? 'Online' : 'Offline'}</p>
+          <p>Mock Hub Portal</p>
+          <p style={{ marginTop: "4px" }}>
+            Status: {isOnline ? "Online" : "Offline"}
+          </p>
         </div>
       </aside>
 
-      {/* Main Area */}
+      {/* Main Content Workspace */}
       <main className="main-content">
         <header className="top-bar">
-          <div className="top-bar-title">
-            {activeTab === 'overview' && 'System Overview'}
-            {activeTab === 'telemetry' && 'Simulate EVSE Telemetry (Locations & Tariffs)'}
-            {activeTab === 'transactions' && 'Simulate Sessions & Billing CDRs'}
-            {activeTab === 'console' && 'Request Console logs'}
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <button
+              className="menu-toggle"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+            <div className="top-bar-title">
+              {activeTab === "overview" && "OCPI 漫遊中心 & 拓撲架構"}
+              {activeTab === "stations" && "CPO 模擬充電站控制面板"}
+              {activeTab === "transactions" && "Prisma DB 交易日誌儲存區"}
+            </div>
           </div>
 
-          <div className={`server-status-badge ${!isOnline ? 'offline' : ''}`}>
-            <span className="status-dot"></span>
-            {isOnline ? `Connected (OCPI ${serverVersion})` : 'Disconnected'}
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <div
+              className={`server-status-badge ${!isOnline ? "offline" : ""}`}
+            >
+              <span className="status-dot"></span>
+              {isOnline ? `Mock HUB (OCPI ${serverVersion})` : "Disconnected"}
+            </div>
           </div>
         </header>
 
-        {/* Workspace */}
         <div className="workspace">
-          
+          {/* CPO -> HUB -> EMSP Flow Diagram */}
+          <div className="flow-diagram-container">
+            <label
+              style={{
+                fontSize: "11px",
+                textTransform: "uppercase",
+                color: "var(--text-muted)",
+              }}
+            >
+              OCPI Roaming Data Pipeline Flow
+            </label>
+            <div style={{ position: "relative" }}>
+              <svg className="flow-diagram-svg" viewBox="0 0 500 70">
+                {/* Connecting Lines */}
+                <path
+                  d="M 100 35 L 250 35"
+                  className={`flow-path ${flowStep === "cpo" || flowStep === "hub" ? "active" : ""}`}
+                />
+                <path
+                  d="M 250 35 L 400 35"
+                  className={`flow-path ${flowStep === "hub" || flowStep === "emsp" ? "active" : ""}`}
+                />
+
+                {/* Animated Pulse Circles */}
+                {flowStep === "cpo" && (
+                  <circle cx="100" cy="35" r="5" className="pulse-circle">
+                    <animate
+                      attributeName="cx"
+                      from="100"
+                      to="250"
+                      dur="0.6s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                )}
+                {flowStep === "hub" && (
+                  <circle cx="250" cy="35" r="5" className="pulse-circle">
+                    <animate
+                      attributeName="cx"
+                      from="250"
+                      to="400"
+                      dur="0.8s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                )}
+
+                {/* Node CPO */}
+                <rect
+                  x="20"
+                  y="10"
+                  width="80"
+                  height="50"
+                  rx="8"
+                  className={`flow-node ${flowStep === "cpo" ? "active" : ""}`}
+                />
+                <text x="60" y="32" className="flow-node-text">
+                  CPO Simulator
+                </text>
+                <text x="60" y="48" className="flow-node-sub">
+                  (充電樁端)
+                </text>
+
+                {/* Node HUB */}
+                <rect
+                  x="210"
+                  y="10"
+                  width="80"
+                  height="50"
+                  rx="8"
+                  className={`flow-node ${flowStep === "hub" ? "active" : ""}`}
+                />
+                <text x="250" y="32" className="flow-node-text">
+                  Mock HUB
+                </text>
+                <text x="250" y="48" className="flow-node-sub">
+                  (漫遊中心)
+                </text>
+
+                {/* Node EMSP */}
+                <rect
+                  x="400"
+                  y="10"
+                  width="80"
+                  height="50"
+                  rx="8"
+                  className={`flow-node ${flowStep === "emsp" ? "active" : ""}`}
+                />
+                <text x="440" y="32" className="flow-node-text">
+                  EMSP Server
+                </text>
+                <text x="440" y="48" className="flow-node-sub">
+                  (地端車主 App)
+                </text>
+              </svg>
+            </div>
+          </div>
+
           {/* TAB 1: OVERVIEW */}
-          {activeTab === 'overview' && (
+          {activeTab === "overview" && (
             <>
               <div className="card status-grid">
                 <div className="status-card">
-                  <span className="label">Server URL</span>
-                  <span className="value" style={{ fontSize: '18px', fontFamily: 'monospace' }}>http://localhost:3030</span>
+                  <span className="label">HUB 本地連接埠</span>
+                  <span
+                    className="value"
+                    style={{ fontSize: "16px", fontFamily: "monospace" }}
+                  >
+                    {targetCpoUrl}
+                  </span>
                 </div>
                 <div className="status-card">
-                  <span className="label">Connected CPO Target</span>
-                  <span className="value" style={{ fontSize: '18px', fontFamily: 'monospace' }}>{targetCpoUrl}</span>
+                  <span className="label">目前偵測到的 CPO 站點數</span>
+                  <span className="value">{locations.length} 站</span>
                 </div>
                 <div className="status-card">
-                  <span className="label">API Logs Tracked</span>
-                  <span className="value">{logs.length}</span>
+                  <span className="label">資料庫充電樁總數</span>
+                  <span className="value">{allEvses.length} 支</span>
+                </div>
+                <div className="status-card">
+                  <span className="label">歷史交易總數</span>
+                  <span className="value">{sessions.length} 筆</span>
                 </div>
               </div>
 
               <div className="card">
-                <h3 className="card-title">🔌 Welcome to OCPI Mock Hub</h3>
-                <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '16px' }}>
-                  This dashboard gives you a clean visual playground to simulate e-Roaming data transactions.
-                  Using the tabs on the left, you can trigger Location details syncing, EVSE status heartbeats, and charging Session CDR records directly to your CPO dashboard.
+                <h3 className="card-title">漫遊中心系統原理說明</h3>
+                <p
+                  style={{
+                    color: "var(--text-secondary)",
+                    lineHeight: "1.7",
+                    marginBottom: "16px",
+                  }}
+                >
+                  本模擬器模擬了符合 <strong>OCPI 2.2.1 協定規格</strong>{" "}
+                  的電子漫遊交易流程。 運作機制如下：
                 </p>
-                <div className="form-group" style={{ maxWidth: '400px' }}>
-                  <label>Config CPO Base Url (For display)</label>
-                  <input 
-                    type="text" 
-                    value={targetCpoUrl} 
-                    onChange={(e) => setTargetCpoUrl(e.target.value)} 
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* TAB 2: TELEMETRY */}
-          {activeTab === 'telemetry' && (
-            <>
-              {/* Location Sync */}
-              <div className="card">
-                <h3 className="card-title">📡 Simulate Location Update</h3>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Country Code</label>
-                    <input type="text" value={countryCode} onChange={(e) => setCountryCode(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>Party ID</label>
-                    <input type="text" value={partyId} onChange={(e) => setPartyId(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>Location ID</label>
-                    <input type="text" value={locationId} onChange={(e) => setLocationId(e.target.value)} />
-                  </div>
-                </div>
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label>Location JSON Payload</label>
-                  <textarea value={locationPayload} onChange={(e) => setLocationPayload(e.target.value)} />
-                </div>
-                <button 
-                  className="button"
-                  onClick={() => sendRequest('Send Location', `/simulate/locations/${countryCode}/${partyId}/${locationId}`, 'POST', locationPayload)}
+                <ul
+                  style={{
+                    color: "var(--text-secondary)",
+                    paddingLeft: "20px",
+                    lineHeight: "1.7",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                    marginBottom: "16px",
+                  }}
                 >
-                  Trigger Location Sync (PUT)
-                </button>
-              </div>
+                  <li>
+                    <strong>充電樁狀態 (EVSE) ─► CPO</strong>
+                    ：車主插槍或狀態改變時，充電樁產生狀態心跳與數據封包。
+                  </li>
+                  <li>
+                    <strong>CPO ─► HUB</strong>：CPO 發送{" "}
+                    <code>PUT/PATCH Locations/Sessions</code>{" "}
+                    將最新充電狀態與度數推送至 Mock HUB 儲存於 PostgreSQL。
+                  </li>
+                  <li>
+                    <strong>HUB ─► EMSP</strong>：Mock HUB
+                    接收並解析，立即透過註冊的 Token C 將交易封包{" "}
+                    <strong>Forward (轉發)</strong> 給對接的 EMSP 車友 App
+                    做即時電量顯示。
+                  </li>
+                </ul>
 
-              {/* Tariff Sync */}
-              <div className="card">
-                <h3 className="card-title">💰 Simulate Tariff Upload</h3>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Tariff ID</label>
-                    <input type="text" value={tariffId} onChange={(e) => setTariffId(e.target.value)} />
+                {locations.length === 0 && (
+                  <div
+                    style={{
+                      background: "rgba(14,165,233,0.06)",
+                      border: "1px dashed var(--accent-purple)",
+                      borderRadius: "12px",
+                      padding: "20px",
+                      textAlign: "center",
+                      marginTop: "20px",
+                    }}
+                  >
+                    <p
+                      style={{
+                        color: "white",
+                        fontWeight: 600,
+                        marginBottom: "12px",
+                      }}
+                    >
+                      目前 PostgreSQL 資料庫中無 CPO 站點資料
+                    </p>
+                    <button className="button" onClick={initializeMockStations}>
+                      一鍵初始化 4 座模擬充電樁
+                    </button>
                   </div>
-                </div>
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label>Tariff JSON Payload</label>
-                  <textarea value={tariffPayload} onChange={(e) => setTariffPayload(e.target.value)} />
-                </div>
-                <button 
-                  className="button"
-                  onClick={() => sendRequest('Send Tariff', `/simulate/tariffs/${countryCode}/${partyId}/${tariffId}`, 'POST', tariffPayload)}
-                >
-                  Trigger Tariff Sync (PUT)
-                </button>
-              </div>
-
-              {/* EVSE Status Patch */}
-              <div className="card">
-                <h3 className="card-title">🔌 EVSE Status Heartbeat</h3>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>EVSE UID</label>
-                    <input type="text" value={evseUid} onChange={(e) => setEvseUid(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>New Status</label>
-                    <select value={evseStatus} onChange={(e) => setEvseStatus(e.target.value)}>
-                      <option value="AVAILABLE">AVAILABLE</option>
-                      <option value="CHARGING">CHARGING</option>
-                      <option value="RESERVED">RESERVED</option>
-                      <option value="OUTOFORDER">OUTOFORDER</option>
-                      <option value="INOPERATIVE">INOPERATIVE</option>
-                    </select>
-                  </div>
-                </div>
-                <button 
-                  className="button"
-                  onClick={() => sendRequest('Patch EVSE Status', `/simulate/locations/${countryCode}/${partyId}/${locationId}/${evseUid}`, 'POST', JSON.stringify({ status: evseStatus, last_updated: new Date().toISOString() }))}
-                >
-                  Send EVSE Status Patch (PATCH)
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* TAB 3: TRANSACTIONS */}
-          {activeTab === 'transactions' && (
-            <>
-              {/* Session Update */}
-              <div className="card">
-                <h3 className="card-title">⚡ Charging Session Updates</h3>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Session ID</label>
-                    <input type="text" value={sessionId} onChange={(e) => setSessionId(e.target.value)} />
-                  </div>
-                </div>
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label>Session JSON Payload</label>
-                  <textarea value={sessionPayload} onChange={(e) => setSessionPayload(e.target.value)} />
-                </div>
-                <button 
-                  className="button"
-                  onClick={() => sendRequest('Send Session Details', `/simulate/sessions/${countryCode}/${partyId}/${sessionId}`, 'POST', sessionPayload)}
-                >
-                  Update Active Session (PUT)
-                </button>
-              </div>
-
-              {/* CDR Post */}
-              <div className="card">
-                <h3 className="card-title">🧾 Send Charge Detail Record (CDR)</h3>
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label>CDR JSON Payload</label>
-                  <textarea value={cdrPayload} onChange={(e) => setCdrPayload(e.target.value)} />
-                </div>
-                <button 
-                  className="button"
-                  onClick={() => sendRequest('Send CDR Receipt', '/simulate/cdrs', 'POST', cdrPayload)}
-                >
-                  Post Final CDR Receipt (POST)
-                </button>
-              </div>
-
-              {/* Cancel Session */}
-              <div className="card">
-                <h3 className="card-title">❌ Cancel Transaction</h3>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Transaction / Session ID</label>
-                    <input type="text" value={transactionNo} onChange={(e) => setTransactionNo(e.target.value)} />
-                  </div>
-                </div>
-                <button 
-                  className="button button-secondary"
-                  onClick={() => sendRequest('Cancel Session', `/simulate/sessions/cancel/${countryCode}/${partyId}/${transactionNo}`, 'POST')}
-                >
-                  Force Cancel charging session
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* TAB 4: CONSOLE */}
-          {activeTab === 'console' && (
-            <div className="card console-container" style={{ flexGrow: 1 }}>
-              <div className="console-header">
-                <h3 className="card-title" style={{ marginBottom: 0 }}>💻 API Activity Monitor</h3>
-                <button className="button button-secondary" onClick={() => setLogs([])}>Clear Console</button>
-              </div>
-              <div className="console-body">
-                {logs.length === 0 ? (
-                  <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>
-                    No activity logs recorded yet. Send a simulation request to populate logs.
-                  </div>
-                ) : (
-                  logs.map(log => (
-                    <div key={log.id} className={`console-log-entry ${log.success ? 'success' : 'error'}`}>
-                      <div className="log-meta">
-                        <span>Time: {log.time} | Action: {log.action}</span>
-                        <span style={{ color: log.success ? 'var(--accent-green)' : 'var(--accent-red)', fontWeight: 'bold' }}>
-                          {log.success ? 'SUCCESS' : 'FAILED'}
-                        </span>
-                      </div>
-                      <div style={{ marginBottom: '8px' }}>
-                        <span style={{ color: 'var(--accent-purple)', fontWeight: 'bold' }}>{log.method}</span>{' '}
-                        <span className="log-path">{log.url}</span>
-                      </div>
-                      
-                      {!!log.payload && (
-                        <details style={{ marginTop: '8px' }}>
-                          <summary style={{ cursor: 'pointer', color: 'var(--accent-blue)', fontSize: '11px' }}>View Request Payload</summary>
-                          <pre className="log-body" style={{ marginTop: '4px' }}>
-                            {JSON.stringify(log.payload, null, 2)}
-                          </pre>
-                        </details>
-                      )}
-
-                      {!!log.response && (
-                        <details style={{ marginTop: '6px' }} open>
-                          <summary style={{ cursor: 'pointer', color: 'var(--accent-blue)', fontSize: '11px' }}>View Response</summary>
-                          <pre className="log-body" style={{ marginTop: '4px' }}>
-                            {JSON.stringify(log.response, null, 2)}
-                          </pre>
-                        </details>
-                      )}
-                    </div>
-                  ))
                 )}
               </div>
-            </div>
+            </>
           )}
 
+          {/* TAB 2: STATIONS CONTROLLER */}
+          {activeTab === "stations" && (
+            <>
+              {locations.length === 0 ? (
+                <div
+                  className="card"
+                  style={{ textAlign: "center", padding: "40px 20px" }}
+                >
+                  <h3
+                    className="card-title"
+                    style={{ justifyContent: "center" }}
+                  >
+                    無任何站點資料
+                  </h3>
+                  <p
+                    style={{
+                      color: "var(--text-secondary)",
+                      marginBottom: "20px",
+                    }}
+                  >
+                    資料庫尚無 Locations。請至系統概觀頁面一鍵部署或傳送
+                    Location 封包進行初始化。
+                  </p>
+                  <button className="button" onClick={initializeMockStations}>
+                    初始化部署 4 座充電樁
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="card">
+                    <h3 className="card-title">
+                      充電樁選擇格點 (請選擇一具充電樁操作)
+                    </h3>
+                    <div className="evse-grid">
+                      {allEvses.map((evse) => {
+                        const localSim = activeChargingSessions[evse.uid];
+                        const displayStatus = localSim
+                          ? "CHARGING"
+                          : evse.status;
+
+                        return (
+                          <div
+                            key={evse.uid}
+                            className={`evse-card ${selectedEvseUid === evse.uid ? "selected" : ""}`}
+                            onClick={() => {
+                              setSelectedEvseUid(evse.uid);
+                              setCustomEvseStatus(displayStatus);
+                            }}
+                          >
+                            <div className="evse-header">
+                              <span
+                                style={{
+                                  fontSize: "12px",
+                                  color: "var(--text-muted)",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {evse.evse_id || "無編號"}
+                              </span>
+                              <span
+                                className={`evse-badge ${displayStatus.toLowerCase()}`}
+                              >
+                                {displayStatus}
+                              </span>
+                            </div>
+
+                            <div className="evse-visual">
+                              <span
+                                style={{
+                                  width: "14px",
+                                  height: "14px",
+                                  borderRadius: "50%",
+                                  backgroundColor:
+                                    displayStatus === "CHARGING"
+                                      ? "var(--accent-purple)"
+                                      : displayStatus === "AVAILABLE"
+                                        ? "var(--accent-green)"
+                                        : displayStatus === "RESERVED"
+                                          ? "var(--accent-yellow)"
+                                          : displayStatus === "BLOCKED"
+                                            ? "var(--accent-yellow)"
+                                            : displayStatus === "PLANNED" ||
+                                                displayStatus === "UNKNOWN"
+                                              ? "var(--text-muted)"
+                                              : "var(--accent-red)",
+                                  boxShadow: `0 0 8px currentColor`,
+                                  color:
+                                    displayStatus === "CHARGING"
+                                      ? "var(--accent-purple)"
+                                      : displayStatus === "AVAILABLE"
+                                        ? "var(--accent-green)"
+                                        : displayStatus === "RESERVED"
+                                          ? "var(--accent-yellow)"
+                                          : displayStatus === "BLOCKED"
+                                            ? "var(--accent-yellow)"
+                                            : displayStatus === "PLANNED" ||
+                                                displayStatus === "UNKNOWN"
+                                              ? "var(--text-muted)"
+                                              : "var(--accent-red)",
+                                }}
+                              />
+                            </div>
+
+                            <div className="evse-telemetry-mini">
+                              <div className="evse-telemetry-row">
+                                <span>類型:</span>
+                                <span>
+                                  {evse.rawJson?.connectors?.[0]?.power_type ||
+                                    "AC"}
+                                </span>
+                              </div>
+                              <div className="evse-telemetry-row">
+                                <span>功率:</span>
+                                <span>
+                                  {evse.rawJson?.connectors?.[0]
+                                    ?.max_electric_power
+                                    ? `${evse.rawJson.connectors[0].max_electric_power / 1000}kW`
+                                    : "22kW"}
+                                </span>
+                              </div>
+                              {localSim && (
+                                <>
+                                  <div
+                                    className="evse-telemetry-row"
+                                    style={{
+                                      marginTop: "4px",
+                                      color: "var(--accent-purple)",
+                                    }}
+                                  >
+                                    <span>電池 SoC:</span>
+                                    <span>{localSim.soc}%</span>
+                                  </div>
+                                  <div className="charging-bar-container">
+                                    <div
+                                      className="charging-bar-fill"
+                                      style={{ width: `${localSim.soc}%` }}
+                                    ></div>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {selectedEvse && (
+                    <div className="card">
+                      <h3 className="card-title">
+                        充電樁控制中心 [
+                        {selectedEvse.evse_id || selectedEvse.uid}]
+                      </h3>
+                      <p
+                        style={{
+                          color: "var(--text-muted)",
+                          fontSize: "13px",
+                          marginBottom: "16px",
+                        }}
+                      >
+                        所屬站點：Location {selectedEvse.locationId} (
+                        {selectedEvse.locationName})
+                      </p>
+
+                      <div className="evse-quick-panel">
+                        {/* Status update */}
+                        <div className="form-group">
+                          <label>模擬更變狀態 (PATCH Status)</label>
+                          <div className="evse-control-actions">
+                            <select
+                              value={customEvseStatus}
+                              onChange={(e) =>
+                                setCustomEvseStatus(e.target.value)
+                              }
+                              style={{ width: "180px" }}
+                            >
+                              <option value="AVAILABLE">
+                                AVAILABLE (空閒)
+                              </option>
+                              <option value="CHARGING">
+                                CHARGING (充電中)
+                              </option>
+                              <option value="RESERVED">RESERVED (預約)</option>
+                              <option value="BLOCKED">BLOCKED (佔用中)</option>
+                              <option value="OUTOFORDER">
+                                OUTOFORDER (故障)
+                              </option>
+                              <option value="INOPERATIVE">
+                                INOPERATIVE (停用)
+                              </option>
+                              <option value="PLANNED">PLANNED (規劃中)</option>
+                              <option value="UNKNOWN">UNKNOWN (未知)</option>
+                            </select>
+                            <button
+                              className="button button-secondary"
+                              onClick={() =>
+                                handlePatchStatus(
+                                  selectedEvse.locationId,
+                                  selectedEvse.uid,
+                                  customEvseStatus,
+                                )
+                              }
+                            >
+                              更新狀態 (PATCH)
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Transaction Simulator */}
+                        <div
+                          className="form-group"
+                          style={{
+                            borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+                            paddingTop: "16px",
+                          }}
+                        >
+                          <label>
+                            交易生命週期模擬 (Transaction Lifecycle)
+                          </label>
+
+                          {activeChargingSessions[selectedEvse.uid] ? (
+                            <div
+                              style={{
+                                background: "rgba(14, 165, 233, 0.06)",
+                                borderRadius: "8px",
+                                padding: "16px",
+                              }}
+                            >
+                              <p
+                                style={{
+                                  color: "white",
+                                  fontWeight: 600,
+                                  marginBottom: "8px",
+                                }}
+                              >
+                                模擬充電進行中...
+                              </p>
+                              <div
+                                className="form-grid"
+                                style={{
+                                  gridTemplateColumns: "repeat(3, 1fr)",
+                                  gap: "12px",
+                                  marginBottom: "16px",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: "11px",
+                                      color: "var(--text-muted)",
+                                    }}
+                                  >
+                                    已充入電量
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: "18px",
+                                      fontWeight: "bold",
+                                      color: "white",
+                                    }}
+                                  >
+                                    {
+                                      activeChargingSessions[selectedEvse.uid]
+                                        .kwh
+                                    }{" "}
+                                    kWh
+                                  </span>
+                                </div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: "11px",
+                                      color: "var(--text-muted)",
+                                    }}
+                                  >
+                                    電池 SoC
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: "18px",
+                                      fontWeight: "bold",
+                                      color: "white",
+                                    }}
+                                  >
+                                    {
+                                      activeChargingSessions[selectedEvse.uid]
+                                        .soc
+                                    }{" "}
+                                    %
+                                  </span>
+                                </div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: "11px",
+                                      color: "var(--text-muted)",
+                                    }}
+                                  >
+                                    累計金額
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: "18px",
+                                      fontWeight: "bold",
+                                      color: "white",
+                                    }}
+                                  >
+                                    {
+                                      activeChargingSessions[selectedEvse.uid]
+                                        .cost
+                                    }{" "}
+                                    TWD
+                                  </span>
+                                </div>
+                              </div>
+                              <button
+                                className="button"
+                                style={{ background: "var(--accent-red)" }}
+                                onClick={() =>
+                                  stopSimulatedCharging(selectedEvse.uid)
+                                }
+                              >
+                                停止充電並發送帳單 (Stop & Send CDR)
+                              </button>
+                            </div>
+                          ) : (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "12px",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: "10px",
+                                  alignItems: "center",
+                                }}
+                              >
+                                <input
+                                  type="text"
+                                  placeholder="自訂 Session ID (留空將自動隨機產生)"
+                                  value={newSessionId}
+                                  onChange={(e) =>
+                                    setNewSessionId(e.target.value)
+                                  }
+                                  style={{ flexGrow: 1 }}
+                                />
+                                <button
+                                  className="button"
+                                  onClick={() =>
+                                    startSimulatedCharging(
+                                      selectedEvse.locationId,
+                                      selectedEvse.uid,
+                                    )
+                                  }
+                                >
+                                  開始充電 (Start Charge Session)
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {/* TAB 3: TRANSACTION ARCHIVES */}
+          {activeTab === "transactions" && (
+            <>
+              {/* Active Sessions */}
+              <div className="card">
+                <h3 className="card-title">Prisma DB 中的 Sessions 歷史紀錄</h3>
+                <div style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      fontSize: "14px",
+                      textAlign: "left",
+                    }}
+                  >
+                    <thead>
+                      <tr
+                        style={{
+                          borderBottom: "1px solid rgba(255,255,255,0.1)",
+                        }}
+                      >
+                        <th style={{ padding: "12px" }}>Session ID</th>
+                        <th style={{ padding: "12px" }}>充電樁 UID</th>
+                        <th style={{ padding: "12px" }}>度數 (kWh)</th>
+                        <th style={{ padding: "12px" }}>目前狀態</th>
+                        <th style={{ padding: "12px" }}>最後更新時間</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sessions.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={5}
+                            style={{
+                              padding: "24px",
+                              textAlign: "center",
+                              color: "var(--text-muted)",
+                            }}
+                          >
+                            資料庫中無交易 Session
+                          </td>
+                        </tr>
+                      ) : (
+                        sessions.map((sess) => (
+                          <tr
+                            key={sess.id}
+                            style={{
+                              borderBottom: "1px solid rgba(255,255,255,0.05)",
+                            }}
+                          >
+                            <td
+                              style={{
+                                padding: "12px",
+                                fontFamily: "monospace",
+                              }}
+                            >
+                              {sess.id}
+                            </td>
+                            <td
+                              style={{
+                                padding: "12px",
+                                fontFamily: "monospace",
+                              }}
+                            >
+                              {sess.evseUid}
+                            </td>
+                            <td style={{ padding: "12px" }}>{sess.kwh}</td>
+                            <td style={{ padding: "12px" }}>
+                              <span
+                                className={`evse-badge ${sess.status.toLowerCase()}`}
+                                style={{ fontSize: "10px" }}
+                              >
+                                {sess.status}
+                              </span>
+                            </td>
+                            <td
+                              style={{
+                                padding: "12px",
+                                color: "var(--text-muted)",
+                              }}
+                            >
+                              {new Date(sess.updatedAt).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* CDR receipts */}
+              <div className="card">
+                <h3 className="card-title">Prisma DB 中的 CDR 帳單紀錄</h3>
+                <div style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      fontSize: "14px",
+                      textAlign: "left",
+                    }}
+                  >
+                    <thead>
+                      <tr
+                        style={{
+                          borderBottom: "1px solid rgba(255,255,255,0.1)",
+                        }}
+                      >
+                        <th style={{ padding: "12px" }}>CDR ID</th>
+                        <th style={{ padding: "12px" }}>度數 (kWh)</th>
+                        <th style={{ padding: "12px" }}>計費金額 (TWD)</th>
+                        <th style={{ padding: "12px" }}>充電時間 (秒)</th>
+                        <th style={{ padding: "12px" }}>記錄時間</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cdrs.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={5}
+                            style={{
+                              padding: "24px",
+                              textAlign: "center",
+                              color: "var(--text-muted)",
+                            }}
+                          >
+                            資料庫中無結帳 CDR
+                          </td>
+                        </tr>
+                      ) : (
+                        cdrs.map((cdr) => {
+                          const raw = cdr.rawJson || {};
+                          const totalCost = raw.total_cost?.incl_vat || 0;
+                          const totalTime = raw.total_time || 0;
+                          return (
+                            <tr
+                              key={cdr.id}
+                              style={{
+                                borderBottom:
+                                  "1px solid rgba(255,255,255,0.05)",
+                              }}
+                            >
+                              <td
+                                style={{
+                                  padding: "12px",
+                                  fontFamily: "monospace",
+                                }}
+                              >
+                                {cdr.id}
+                              </td>
+                              <td style={{ padding: "12px" }}>
+                                {raw.total_energy || 0} kWh
+                              </td>
+                              <td
+                                style={{
+                                  padding: "12px",
+                                  color: "var(--accent-yellow)",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                NT$ {totalCost}
+                              </td>
+                              <td style={{ padding: "12px" }}>
+                                {totalTime} 秒
+                              </td>
+                              <td
+                                style={{
+                                  padding: "12px",
+                                  color: "var(--text-muted)",
+                                }}
+                              >
+                                {new Date(cdr.createdAt).toLocaleString()}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </main>
+
+      {/* macOS Terminal Logs Console */}
+      <section className={`mac-terminal ${terminalExpanded ? "expanded" : ""}`}>
+        <header
+          className="mac-titlebar"
+          onClick={() => setTerminalExpanded(!terminalExpanded)}
+        >
+          <div className="mac-buttons" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="mac-btn close"
+              onClick={() => setLogs([])}
+              title="Clear terminal"
+            ></div>
+            <div
+              className="mac-btn minimize"
+              onClick={() => setTerminalExpanded(false)}
+              title="Minimize terminal"
+            ></div>
+            <div
+              className="mac-btn maximize"
+              onClick={() => setTerminalExpanded(!terminalExpanded)}
+              title="Maximize terminal"
+            ></div>
+          </div>
+          <span className="mac-title">
+            guest@mock-hub: ~ -zsh ── {logs.length} logs
+          </span>
+        </header>
+
+        <div className="mac-term-body" ref={terminalBodyRef}>
+          <div className="terminal-welcome">
+            <p>Last login: {new Date().toDateString()} on ttys001</p>
+            <p>
+              Welcome to OCPI Mock Hub activity monitor. Output streams from
+              local port 3030.
+            </p>
+            <p style={{ marginTop: "4px" }}>
+              Type `/help` to see additional simulator control logs.
+            </p>
+          </div>
+
+          {filteredLogs.length === 0 ? (
+            <div
+              style={{
+                color: "var(--text-muted)",
+                fontSize: "12px",
+                padding: "10px 0",
+              }}
+            >
+              <span className="terminal-prompt">$ </span>tail -f
+              /var/log/ocpi-roaming.log
+              <p style={{ marginTop: "12px", fontStyle: "italic" }}>
+                Listening for API activity... Trigger a simulation request to
+                start stream logs.
+              </p>
+            </div>
+          ) : (
+            filteredLogs.map((log) => (
+              <div
+                key={log.id}
+                className={`log-entry-mac ${log.success ? "success" : "error"}`}
+              >
+                <div className="log-entry-header">
+                  <span>
+                    [{log.time}] {log.action}
+                  </span>
+                  <span
+                    style={{
+                      color: log.success
+                        ? "var(--accent-green)"
+                        : "var(--accent-red)",
+                    }}
+                  >
+                    {log.success ? "HTTP/1.1 200 OK" : "HTTP/1.1 ERROR"}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: "13px" }}>
+                  <span className={`method-tag ${log.method.toLowerCase()}`}>
+                    {log.method}
+                  </span>
+                  <span className="log-url">
+                    {log.url.replace("http://localhost:3030", "")}
+                  </span>
+                </div>
+
+                {!!log.payload && (
+                  <details className="log-details">
+                    <summary>Request Payload</summary>
+                    <pre>{JSON.stringify(log.payload, null, 2)}</pre>
+                  </details>
+                )}
+
+                {!!log.response && (
+                  <details className="log-details" open>
+                    <summary>Response Body</summary>
+                    <pre>{JSON.stringify(log.response, null, 2)}</pre>
+                  </details>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="term-controls">
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <label style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+              過濾類型:
+            </label>
+            <select
+              value={filterMethod}
+              onChange={(e) => setFilterMethod(e.target.value)}
+              style={{
+                padding: "4px 8px",
+                fontSize: "12px",
+                background: "rgba(0,0,0,0.5)",
+                height: "28px",
+              }}
+            >
+              <option value="ALL">ALL (全部)</option>
+              <option value="PUT">PUT</option>
+              <option value="POST">POST</option>
+              <option value="PATCH">PATCH</option>
+            </select>
+          </div>
+          <button
+            className="button button-secondary"
+            style={{ padding: "4px 10px", fontSize: "12px", height: "28px" }}
+            onClick={() => setLogs([])}
+          >
+            清除日誌 (Clear)
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

@@ -25,6 +25,11 @@ export class ThrottlerGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
 
+    // Bypass rate limiting for local simulator API endpoints
+    if (request.url && (request.url.startsWith("/simulator") || request.url.startsWith("simulator"))) {
+      return true;
+    }
+
     // Get client IP address (handling proxies if configured)
     const ip = request.ip || request.headers["x-forwarded-for"] || "unknown";
 

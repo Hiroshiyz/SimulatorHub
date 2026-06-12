@@ -14,7 +14,7 @@ export default defineConfig({
         target: 'http://localhost:3030',
         changeOrigin: true,
       },
-      '/simulate': {
+      '/simulator': {
         target: 'http://localhost:3030',
         changeOrigin: true,
       },
