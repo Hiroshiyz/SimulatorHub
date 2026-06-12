@@ -4,9 +4,11 @@ import { LoggingInterceptor } from "./common/interceptors/logging.interceptors";
 import { ThrottlerGuard } from "./common/gurads/throttler.guard";
 import { OcpiModule } from "./ocpi/ocpi.module";
 import { SimulatorModule } from "./simulator/simulator.module";
+import { PrismaModule } from "./prisma/prisma.module";
+import { RedisModule } from "./redis/redis.module";
 
 @Module({
-  imports: [OcpiModule, SimulatorModule],
+  imports: [PrismaModule, RedisModule, OcpiModule, SimulatorModule],
   controllers: [],
   providers: [
     {

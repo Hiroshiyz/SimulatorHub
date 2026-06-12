@@ -3,9 +3,25 @@ import { ExecutionContext, HttpException, HttpStatus } from "@nestjs/common";
 
 describe("ThrottlerGuard", () => {
   let guard: ThrottlerGuard;
+  let mockPrisma: any;
+  let mockRedis: any;
+  let mockRedisClient: any;
 
   beforeEach(() => {
-    guard = new ThrottlerGuard();
+    mockPrisma = {
+      credential: {
+        findFirst: jest.fn(),
+      },
+    };
+    mockRedisClient = {
+      get: jest.fn(),
+      setex: jest.fn(),
+    };
+    mockRedis = {
+      getClient: () => mockRedisClient,
+      isRateLimited: jest.fn(),
+    };
+    guard = new ThrottlerGuard(mockPrisma as any, mockRedis as any);
   });
 
   const createMockContext = (ip: string, headers: Record<string, string> = {}): ExecutionContext => {
@@ -23,40 +39,52 @@ describe("ThrottlerGuard", () => {
     expect(guard).toBeDefined();
   });
 
-  it("should allow request under the rate limit", () => {
+  it("should allow request under the rate limit", async () => {
     const context = createMockContext("127.0.0.1");
-    expect(guard.canActivate(context)).toBe(true);
+    mockRedis.isRateLimited.mockResolvedValueOnce(false);
+
+    const result = await guard.canActivate(context);
+    expect(result).toBe(true);
+    expect(mockRedis.isRateLimited).toHaveBeenCalledWith("rate_limit:ip:127.0.0.1", 30, 60);
   });
 
-  it("should block requests when limit is exceeded", () => {
+  it("should block requests when limit is exceeded", async () => {
     const context = createMockContext("192.168.1.1");
+    mockRedis.isRateLimited.mockResolvedValueOnce(true);
 
-    // The limit is 30. Send 30 successful requests.
-    for (let i = 0; i < 30; i++) {
-      expect(guard.canActivate(context)).toBe(true);
-    }
+    await expect(guard.canActivate(context)).rejects.toThrow(HttpException);
 
-    // The 31st request should be blocked and throw an HttpException
-    expect(() => guard.canActivate(context)).toThrow(HttpException);
     try {
-      guard.canActivate(context);
+      mockRedis.isRateLimited.mockResolvedValueOnce(true);
+      await guard.canActivate(context);
     } catch (error: any) {
       expect(error.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
       expect(error.message).toBe("Too Many Requests - Rate limit exceeded");
     }
   });
 
-  it("should have independent limits for different IPs", () => {
-    const clientA = createMockContext("1.1.1.1");
-    const clientB = createMockContext("2.2.2.2");
+  it("should dynamically fetch rate limit for registered tenant from cache/db", async () => {
+    const context = createMockContext("1.1.1.1", {
+      authorization: "Bearer tenant_token_123",
+    });
+    mockRedis.getClient().get.mockResolvedValueOnce(
+      JSON.stringify({
+        id: "tenant-123",
+        countryCode: "TW",
+        partyId: "NPT",
+        role: "CPO",
+        rateLimit: 150,
+        rateLimitWindow: 120,
+      }),
+    );
+    mockRedis.isRateLimited.mockResolvedValueOnce(false);
 
-    // Exceed limit for client A
-    for (let i = 0; i < 30; i++) {
-      expect(guard.canActivate(clientA)).toBe(true);
-    }
-    expect(() => guard.canActivate(clientA)).toThrow(HttpException);
-
-    // Client B should still be allowed since it's a different IP
-    expect(guard.canActivate(clientB)).toBe(true);
+    const result = await guard.canActivate(context);
+    expect(result).toBe(true);
+    expect(mockRedis.isRateLimited).toHaveBeenCalledWith(
+      "rate_limit:party:TW:NPT:CPO",
+      150,
+      120,
+    );
   });
 });

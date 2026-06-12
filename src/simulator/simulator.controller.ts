@@ -1,12 +1,13 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   Param,
 } from "@nestjs/common";
 import { SimulatorService } from "./simulator.service";
 
-@Controller()
+@Controller("simulator")
 export class SimulatorController {
   constructor(private readonly simulatorService: SimulatorService) {}
 
@@ -80,5 +81,25 @@ export class SimulatorController {
       partyId,
       transactionNo,
     );
+  }
+
+  @Get("locations")
+  async getLocations() {
+    return this.simulatorService.getLocations();
+  }
+
+  @Get("sessions")
+  async getSessions() {
+    return this.simulatorService.getSessions();
+  }
+
+  @Get("cdrs")
+  async getCdrs() {
+    return this.simulatorService.getCdrs();
+  }
+
+  @Get("health")
+  healthCheck() {
+    return { status: "OK" };
   }
 }
