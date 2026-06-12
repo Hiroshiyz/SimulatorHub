@@ -5,13 +5,14 @@ import {
   CallHandler,
   Logger,
 } from "@nestjs/common";
-import { error } from "console";
 import { Observable, throwError } from "rxjs";
 import { tap, catchError } from "rxjs/operators";
 
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger("OCPI-Logger");
+  private readonly isProduction = process.env.NODE_ENV === "production";
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const httpContext = context.switchToHttp();
     const request = httpContext.getRequest();
@@ -23,29 +24,45 @@ export class LoggingInterceptor implements NestInterceptor {
         const time = Date.now() - startTime;
         const response = httpContext.getResponse();
         const statusCode = response.statusCode;
-        this.logger.log(
-          `[HTTP SUCCESS]${method} ${url} Status: ${statusCode} - ${time}ms` +
-            `\nRequest Headers: ${JSON.stringify(this.sanitizeHeaders(headers))}` +
-            `\n Request Body: ${JSON.stringify(body || {})}` +
-            `\n Response Body: ${JSON.stringify(resData || {})}`,
-        );
+        
+        if (this.isProduction) {
+          this.logger.log(
+            `[HTTP SUCCESS] ${method} ${url} Status: ${statusCode} - ${time}ms`,
+          );
+        } else {
+          this.logger.log(
+            `[HTTP SUCCESS] ${method} ${url} Status: ${statusCode} - ${time}ms` +
+              `\nRequest Headers: ${JSON.stringify(this.sanitizeHeaders(headers))}` +
+              `\n Request Body: ${JSON.stringify(body || {})}` +
+              `\n Response Body: ${JSON.stringify(resData || {})}`,
+          );
+        }
       }),
       catchError((err) => {
         const time = Date.now() - startTime;
-        const statusCode = err.statusCode;
+        const statusCode = err.status || err.statusCode || 500;
         const message = err.message || err;
-        this.logger.error(
-          `[HTTP ERROR]${method} ${url} Status: ${statusCode} - ${time}ms` +
-            `\nRequest Headers: ${JSON.stringify(
-              this.sanitizeHeaders(headers),
-            )}` +
-            `\n Request Body: ${JSON.stringify(body || {})}` +
-            `\n Error Message: ${message}`,
-        );
+        
+        if (this.isProduction) {
+          this.logger.error(
+            `[HTTP ERROR] ${method} ${url} Status: ${statusCode} - ${time}ms` +
+              `\n Error Message: ${message}`,
+          );
+        } else {
+          this.logger.error(
+            `[HTTP ERROR] ${method} ${url} Status: ${statusCode} - ${time}ms` +
+              `\nRequest Headers: ${JSON.stringify(
+                this.sanitizeHeaders(headers),
+              )}` +
+              `\n Request Body: ${JSON.stringify(body || {})}` +
+              `\n Error Message: ${message}`,
+          );
+        }
         return throwError(() => err);
       }),
     );
   }
+
   private sanitizeHeaders(headers: any) {
     const sanitized = { ...headers };
     if (sanitized["authorization"]) {
