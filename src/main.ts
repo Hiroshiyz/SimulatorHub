@@ -1,11 +1,17 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { NestFactory } from "@nestjs/core";
+import "dotenv/config";
+import { NestExpressApplication } from "@nestjs/platform-express";
+import { join } from "path";
+import { AppModule } from "./app.module";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  app.enableCors();
-  
+  //NestExpressApplication to use useStaticAssets
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const port = process.env.PORT || 3030;
+
+  app.enableCors({ credentials: true });
+  app.useStaticAssets(join(__dirname, "..", "public"));
+
   await app.listen(port);
   console.log(`OCPI Mock Hub is running on: http://localhost:${port}`);
 }

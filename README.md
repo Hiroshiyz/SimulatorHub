@@ -13,3 +13,56 @@ This repository features an EV charging infrastructure HUB Simulator built with 
 - **充電樁數據動態收集 (EVSE Telemetry Aggregation)**：模擬底層充電樁即時回傳的狀態（Status）、充電會話（Sessions）與充電明細（CDRs），並由 HUB 統一整合。
 - **上層 EMSP 數據轉發 (Data Routing)**：將收集到的 CPO 數據，依據路由規則精準轉發或提供給指定的 EMSP。
 - **架構 (Framework)**：內建全域 OCPI 請求/回應 Log 攔截器 (Interceptor)、多租戶動態限流 (Guard) 以及客製化身分上下文裝飾器 (`@CurrentParty()`)。
+
+## 環境設置 / env set up
+
+- **Env**
+
+```bash
+cp .env.example .env
+```
+
+## 資料庫與 ORM 管理 / Database & ORM Management
+
+本專案使用 **Prisma ORM** 作為持久化層，搭配 **PostgreSQL** 與 **Redis** 提供高併發、多租戶的充電明細與會話管理。
+
+### ORM 常用指令與啟動指令：
+
+- **套用 migrations 變更至資料庫**：
+  ```bash
+  npm run db:migrate
+  ```
+- **重新產生 Prisma Client 型別**：
+  ```bash
+  #(如果改變了schema)
+  npm run db:generate
+  ```
+- **匯入測試 Seed 資料**（預設建立 CPO `TW*CPO` 與 EMSP `TW*EMS`）：
+  ```bash
+  npm run db:seed
+  ```
+- **啟動資料庫 GUI 網頁管理後台 (Prisma Studio)**：
+  ```bash
+  npm run db:studio
+  ```
+  _啟動後可至瀏覽器開啟 [http://localhost:5555](http://localhost:5555) 視覺化查詢/編輯租戶與交易數據。_
+
+---
+
+## 啟動測試 / Start testing
+
+```bash
+# Testing
+npm run test
+
+# Coverage
+npm run test:cov
+```
+
+```bash
+# Server (Port 3030)
+npm run start:dev
+
+# Client (React Dashboard)
+npm run client:dev
+```
