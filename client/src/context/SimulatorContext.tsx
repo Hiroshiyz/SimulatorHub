@@ -632,9 +632,10 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       tariffPayload,
     );
 
+    const { countryCode, partyId } = getLocCpoInfo(selectedLocationId);
     await sendRequest(
       "Sync Tariff -> TAR-REGULAR",
-      "/simulator/simulate/tariffs/TW/CPO/TAR-REGULAR",
+      `/simulator/simulate/tariffs/${countryCode}/${partyId}/TAR-REGULAR`,
       "POST",
       tariffPayload,
     );
