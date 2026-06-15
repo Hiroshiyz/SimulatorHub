@@ -216,10 +216,22 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     "idle",
   );
 
-  // Selection & Input states
-  const [selectedLocationId, setSelectedLocationId] =
+  // Selection & Input states (Internal raw state)
+  const [selectedLocationIdState, setSelectedLocationId] =
     useState<string>("loc_001");
-  const [selectedEvseUid, setSelectedEvseUid] = useState<string | null>(null);
+  const [selectedEvseUidState, setSelectedEvseUid] = useState<string | null>(null);
+
+  // Derive normalized/effective values to prevent invalid states without using useEffect
+  const hasSelectedLoc = locations.some((l) => l.id === selectedLocationIdState);
+  const selectedLocationId = locations.length > 0
+    ? (hasSelectedLoc ? selectedLocationIdState : locations[0].id)
+    : "loc_001";
+
+  const matchedLoc = locations.find((l) => l.id === selectedLocationId);
+  const matchedEvses = matchedLoc?.evses || [];
+  const selectedEvseUid = matchedEvses.length > 0
+    ? (matchedEvses.some((e) => e.uid === selectedEvseUidState) ? selectedEvseUidState : matchedEvses[0].uid)
+    : null;
   const [customEvseStatus, setCustomEvseStatus] = useState<string>("AVAILABLE");
   const [newSessionId, setNewSessionId] = useState<string>("");
 
@@ -446,43 +458,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Keep selectedLocationId and selectedEvseUid synced and valid with fetched locations
-  useEffect(() => {
-    if (locations.length > 0) {
-      const hasSelectedLoc = locations.some((l) => l.id === selectedLocationId);
-      if (!hasSelectedLoc) {
-        setSelectedLocationId(locations[0].id);
-        if (locations[0].evses && locations[0].evses.length > 0) {
-          setSelectedEvseUid(locations[0].evses[0].uid);
-        } else {
-          setSelectedEvseUid(null);
-        }
-      } else {
-        const matchedLoc = locations.find((l) => l.id === selectedLocationId);
-        if (matchedLoc) {
-          const matchedEvses = matchedLoc.evses || [];
-          if (matchedEvses.length > 0) {
-            const hasSelectedEvse = matchedEvses.some(
-              (e) => e.uid === selectedEvseUid,
-            );
-            if (!hasSelectedEvse) {
-              setSelectedEvseUid(matchedEvses[0].uid);
-            }
-          } else {
-            setSelectedEvseUid(null);
-          }
-        }
-      }
-    } else {
-      setSelectedEvseUid(null);
-    }
-  }, [
-    locations,
-    selectedLocationId,
-    selectedEvseUid,
-    setSelectedLocationId,
-    setSelectedEvseUid,
-  ]);
+  // Sync logic is now cleanly derived on rendering above. No useEffect required.
 
   // Scroll to bottom of terminal when logs update
   useEffect(() => {
