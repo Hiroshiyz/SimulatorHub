@@ -295,6 +295,17 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     emspsRef.current = emsps;
   }, [emsps]);
 
+  const getLocCpoInfo = (locId: string) => {
+    const loc = locationsRef.current.find((l) => l.id === locId);
+    if (loc && loc.party) {
+      return {
+        countryCode: loc.party.countryCode.toUpperCase(),
+        partyId: loc.party.partyId.toUpperCase(),
+      };
+    }
+    return { countryCode: "TW", partyId: "CPO" };
+  };
+
   // Log activity appender matching CPO/HUB/eMSP console style
   const addLog = (
     module: "SYSTEM" | "HUB" | "eMSP" | "CPO_SIM",
@@ -737,9 +748,10 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       status: nextStatus,
       last_updated: new Date().toISOString(),
     };
+    const { countryCode, partyId } = getLocCpoInfo(locationId);
     await sendRequest(
       `Patch Status -> ${nextStatus}`,
-      `/simulator/simulate/locations/TW/CPO/${locationId}/${evseUid}`,
+      `/simulator/simulate/locations/${countryCode}/${partyId}/${locationId}/${evseUid}`,
       "POST",
       payload,
     );
@@ -851,9 +863,10 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       ...sessionTemplateRef.current, // Merge template variables
     };
 
+    const { countryCode, partyId } = getLocCpoInfo(locationId);
     const res = await sendRequest(
       `Start Session [${generatedSessId}]`,
-      `/simulator/simulate/sessions/TW/CPO/${generatedSessId}`,
+      `/simulator/simulate/sessions/${countryCode}/${partyId}/${generatedSessId}`,
       "POST",
       initialSessionPayload,
     );
@@ -915,9 +928,10 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       ...sessionTemplateRef.current,
     };
 
+    const { countryCode, partyId } = getLocCpoInfo(session.locationId);
     await sendRequest(
       `Complete Session [${session.sessionId}]`,
-      `/simulator/simulate/sessions/TW/CPO/${session.sessionId}`,
+      `/simulator/simulate/sessions/${countryCode}/${partyId}/${session.sessionId}`,
       "POST",
       finalSessionPayload,
     );
@@ -1051,9 +1065,10 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
 
     const matchedEmsp = emsps.find((e) => e.id === sessionPayloadEdit.emsp_id);
     if (matchedEmsp && matchedEmsp.active) {
+      const { countryCode, partyId } = getLocCpoInfo(sessionPayloadEdit.location_id || "");
       await sendRequest(
         `Manual PUT Session [${sessionPayloadEdit.id}]`,
-        `/simulator/simulate/sessions/TW/CPO/${sessionPayloadEdit.id}`,
+        `/simulator/simulate/sessions/${countryCode}/${partyId}/${sessionPayloadEdit.id}`,
         "POST",
         sessionPayloadEdit,
       );
@@ -1197,12 +1212,16 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           ...sessionTemplateRef.current,
         };
 
+        const { countryCode, partyId } = getLocCpoInfo(session.locationId);
         // Sync with backend API silently
-        fetch(`/simulator/simulate/sessions/TW/CPO/${session.sessionId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sessionPayload),
-        }).catch((err) => console.error("Telemetry sync error:", err));
+        fetch(
+          `/simulator/simulate/sessions/${countryCode}/${partyId}/${session.sessionId}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(sessionPayload),
+          },
+        ).catch((err) => console.error("Telemetry sync error:", err));
 
         // Randomly broadcast PUT session logs in terminal
         if (Math.random() > 0.8) {

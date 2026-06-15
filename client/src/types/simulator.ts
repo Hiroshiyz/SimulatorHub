@@ -36,6 +36,12 @@ export interface Location {
   };
   evses: Evse[];
   rawJson?: unknown;
+  party?: {
+    countryCode: string;
+    partyId: string;
+    role: string;
+    name: string | null;
+  };
 }
 
 export interface LogEntry {

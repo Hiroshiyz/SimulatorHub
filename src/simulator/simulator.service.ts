@@ -191,6 +191,7 @@ export class SimulatorService implements OnModuleInit {
     return this.prisma.location.findMany({
       include: {
         evses: true,
+        party: true,
       },
     });
   }
