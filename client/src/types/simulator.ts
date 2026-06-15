@@ -162,3 +162,18 @@ export interface OcpiCdr {
   [key: string]: unknown;
 }
 
+export interface CpoTenant {
+  id: string;
+  countryCode: string;
+  partyId: string;
+  role: string;
+  name: string | null;
+  credential?: {
+    id: string;
+    tokenB: string | null;
+    tokenC: string | null;
+    url: string | null;
+  } | null;
+}
+
+

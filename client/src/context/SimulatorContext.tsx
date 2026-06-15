@@ -14,6 +14,7 @@ import type {
   OcpiSession,
   OcpiCdr,
   OcpiTotalCost,
+  CpoTenant,
 } from "../types/simulator";
 
 interface SimulatorContextType {
@@ -59,6 +60,8 @@ interface SimulatorContextType {
   // Phase 2 state variables
   emsps: EmspChannel[];
   setEmsps: React.Dispatch<React.SetStateAction<EmspChannel[]>>;
+  cpos: CpoTenant[];
+  setCpos: React.Dispatch<React.SetStateAction<CpoTenant[]>>;
   autoCharges: AutoChargeMapping[];
   setAutoCharges: React.Dispatch<React.SetStateAction<AutoChargeMapping[]>>;
   sessionPayloadEdit: OcpiSession | null;
@@ -222,6 +225,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
 
   // Phase 2 states
   const [emsps, setEmsps] = useState<EmspChannel[]>([]);
+  const [cpos, setCpos] = useState<CpoTenant[]>([]);
   const [autoCharges, setAutoCharges] = useState<AutoChargeMapping[]>(
     INITIAL_AUTOCHARGE_MAPPINGS,
   );
@@ -313,13 +317,14 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     setLogs((prev) => [...prev, newEntry]);
   };
 
-  // Fetch all databases (locations, sessions, CDRs) from simulator backend
+  // Fetch all databases (locations, sessions, CDRs, CPOs) from simulator backend
   const fetchDatabaseState = async () => {
     try {
-      const [locRes, sessRes, cdrRes] = await Promise.all([
+      const [locRes, sessRes, cdrRes, cpoRes] = await Promise.all([
         fetch("/simulator/locations"),
         fetch("/simulator/sessions"),
         fetch("/simulator/cdrs"),
+        fetch("/simulator/cpos"),
       ]);
 
       if (locRes.ok) {
@@ -336,6 +341,10 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       if (cdrRes.ok) {
         const cdrData = await cdrRes.json();
         setCdrs(cdrData);
+      }
+      if (cpoRes.ok) {
+        const cpoData = await cpoRes.json();
+        setCpos(cpoData);
       }
     } catch (err) {
       console.error("Failed to query database state:", err);
@@ -1317,6 +1326,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         // Phase 2 states
         emsps,
         setEmsps,
+        cpos,
+        setCpos,
         autoCharges,
         setAutoCharges,
         sessionPayloadEdit,

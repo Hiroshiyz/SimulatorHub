@@ -82,14 +82,14 @@ async function main() {
     await prisma.credential.upsert({
       where: { partyId: emspParty.id },
       update: {
-        tokenB: "fRq8p2jwOg_Wy1aV2H3rTSolPpmlMSbDw7J3gQBJmZ4",
-        tokenC: "mock_emsp_token_c_789",
+        tokenB: "mock_emsp_token_c_123",
+        tokenC: "mock_emsp_token_c_123",
         url: "http://localhost:5053", // Default target EMSP
       },
       create: {
         partyId: emspParty.id,
-        tokenB: "fRq8p2jwOg_Wy1aV2H3rTSolPpmlMSbDw7J3gQBJmZ4",
-        tokenC: "mock_emsp_token_c_789",
+        tokenB: "mock_emsp_token_c_123",
+        tokenC: "mock_emsp_token_c_123",
         url: "http://localhost:5053",
       },
     });

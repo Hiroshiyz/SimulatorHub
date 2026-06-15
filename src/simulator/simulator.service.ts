@@ -211,6 +211,13 @@ export class SimulatorService implements OnModuleInit {
     });
   }
 
+  async getCpos() {
+    return this.prisma.party.findMany({
+      where: { role: "CPO" },
+      include: { credential: true },
+    });
+  }
+
   getEventStream(): Observable<MessageEvent> {
     return this.ocpiService.commands$.pipe(
       map((event) => ({ data: event }) as MessageEvent),
@@ -220,12 +227,6 @@ export class SimulatorService implements OnModuleInit {
   async onModuleInit() {
     this.logger.log("Verifying and upserting EMSP channels in database...");
     const defaultEmsps = [
-      {
-        countryCode: "TW",
-        partyId: "EMSP",
-        name: "Taiwan Roaming EMSP (Local)",
-        url: "http://localhost:5053",
-      },
       {
         countryCode: "TW",
         partyId: "SMB",
@@ -263,8 +264,8 @@ export class SimulatorService implements OnModuleInit {
           create: {
             partyId: party.id,
             url: emsp.url,
-            tokenB: `mock_token_b_${emsp.partyId.toLowerCase()}`,
-            tokenC: `mock_token_c_${emsp.partyId.toLowerCase()}`,
+            tokenB: `mock_${emsp.partyId.toLowerCase()}_token_b_123`,
+            tokenC: `mock_${emsp.partyId.toLowerCase()}_token_c_123`,
           },
         });
       } catch (err: any) {
@@ -294,16 +295,19 @@ export class SimulatorService implements OnModuleInit {
           const checkUrl = url.includes("mock-emsp")
             ? `${url}/health`
             : `${url}/ocpi/2.2.1/versions`;
-          await axios.get(checkUrl, { timeout: 1500 });
+          await axios.get(checkUrl, { timeout: 1500, validateStatus: () => true });
           isOnline = true;
           latency = Date.now() - startTime;
         } catch (err: any) {
           try {
-            await axios.get(url, { timeout: 1500 });
+            await axios.get(url, { timeout: 1500, validateStatus: () => true });
             isOnline = true;
             latency = Date.now() - startTime;
           } catch (err2: any) {
             error = err2.message;
+            this.logger.warn(
+              `EMSP ${emsp.partyId} health check failed: ${error} (${url})`,
+            );
           }
         }
       }

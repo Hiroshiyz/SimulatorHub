@@ -15,6 +15,11 @@ describe("SimulatorService", () => {
     mockPrisma = {
       party: {
         findFirst: jest.fn().mockResolvedValue(null), // returns null to fall back to environment variables in tests
+        upsert: jest.fn().mockImplementation(({ create }) => Promise.resolve({ id: "mock_party_id", ...create })),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      credential: {
+        upsert: jest.fn().mockResolvedValue({}),
       },
     };
 
@@ -136,6 +141,77 @@ describe("SimulatorService", () => {
         {},
         expect.any(Object),
       );
+    });
+  });
+
+  describe("registerCpo", () => {
+    it("should register a CPO party and credential", async () => {
+      const payload = {
+        countryCode: "TW",
+        partyId: "EVZ",
+        name: "Test CPO",
+        tokenB: "mock_token_b",
+      };
+
+      const result = await service.registerCpo(payload);
+
+      expect(mockPrisma.party.upsert).toHaveBeenCalled();
+      expect(mockPrisma.credential.upsert).toHaveBeenCalled();
+      expect(result.partyId).toBe("EVZ");
+    });
+  });
+
+  describe("registerEmsp", () => {
+    it("should register an EMSP party and credential", async () => {
+      const payload = {
+        countryCode: "TW",
+        partyId: "EVZ_EMSP",
+        name: "Test EMSP",
+        url: "http://localhost:5053",
+        tokenC: "mock_token_c",
+      };
+
+      const result = await service.registerEmsp(payload);
+
+      expect(mockPrisma.party.upsert).toHaveBeenCalled();
+      expect(mockPrisma.credential.upsert).toHaveBeenCalled();
+      expect(result.partyId).toBe("EVZ_EMSP");
+    });
+  });
+
+  describe("getCpos", () => {
+    it("should retrieve all CPO parties", async () => {
+      mockPrisma.party.findMany.mockResolvedValueOnce([
+        { id: "1", role: "CPO", name: "CPO 1" },
+      ]);
+
+      const result = await service.getCpos();
+
+      expect(mockPrisma.party.findMany).toHaveBeenCalledWith({
+        where: { role: "CPO" },
+        include: { credential: true },
+      });
+      expect(result).toHaveLength(1);
+    });
+  });
+
+  describe("getEmspStatus", () => {
+    it("should return correct status even if versions endpoint returns 401", async () => {
+      mockPrisma.party.findMany.mockResolvedValueOnce([
+        {
+          id: "emsp-1",
+          countryCode: "TW",
+          partyId: "EMSP",
+          role: "EMSP",
+          credential: { url: "http://localhost:5053" },
+        },
+      ]);
+      mockedAxios.get.mockResolvedValueOnce({ status: 401 }); // Mock versions endpoint returning 401
+
+      const result = await service.getEmspStatus();
+
+      expect(result[0].online).toBe(true);
+      expect(result[0].error).toBeNull();
     });
   });
 });

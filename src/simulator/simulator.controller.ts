@@ -103,6 +103,11 @@ export class SimulatorController {
     return this.simulatorService.getCdrs();
   }
 
+  @Get("cpos")
+  async getCpos() {
+    return this.simulatorService.getCpos();
+  }
+
   @Get("health")
   healthCheck() {
     return { status: "OK" };

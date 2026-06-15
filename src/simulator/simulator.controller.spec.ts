@@ -14,6 +14,10 @@ describe("SimulatorController", () => {
     sendCdr: jest.fn().mockResolvedValue({ status_code: 1000 }),
     sendCancelSession: jest.fn().mockResolvedValue({ status_code: 1000 }),
     getEventStream: jest.fn().mockReturnValue({}),
+    registerCpo: jest.fn().mockResolvedValue({ id: "1" }),
+    registerEmsp: jest.fn().mockResolvedValue({ id: "2" }),
+    getCpos: jest.fn().mockResolvedValue([]),
+    getEmspStatus: jest.fn().mockResolvedValue([]),
   };
 
   beforeEach(async () => {
@@ -90,6 +94,47 @@ describe("SimulatorController", () => {
     it("should call service.getEventStream", () => {
       controller.sendEvents();
       expect(service.getEventStream).toHaveBeenCalled();
+    });
+  });
+
+  describe("registerCpo", () => {
+    it("should call service.registerCpo", async () => {
+      const payload = {
+        countryCode: "TW",
+        partyId: "EVZ",
+        name: "Test CPO",
+        tokenB: "mock_token_b",
+      };
+      await controller.registerCpo(payload);
+      expect(service.registerCpo).toHaveBeenCalledWith(payload);
+    });
+  });
+
+  describe("registerEmsp", () => {
+    it("should call service.registerEmsp", async () => {
+      const payload = {
+        countryCode: "TW",
+        partyId: "EVZ_EMSP",
+        name: "Test EMSP",
+        url: "http://localhost:5053",
+        tokenC: "mock_token_c",
+      };
+      await controller.registerEmsp(payload);
+      expect(service.registerEmsp).toHaveBeenCalledWith(payload);
+    });
+  });
+
+  describe("getCpos", () => {
+    it("should call service.getCpos", async () => {
+      await controller.getCpos();
+      expect(service.getCpos).toHaveBeenCalled();
+    });
+  });
+
+  describe("getEmspsStatus", () => {
+    it("should call service.getEmspsStatus", async () => {
+      await controller.getEmspsStatus();
+      expect(service.getEmspStatus).toHaveBeenCalled();
     });
   });
 });

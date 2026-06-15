@@ -10,6 +10,7 @@ export default function HubRouterPage() {
     addLog,
     handleAddCpo,
     handleAddEmsp,
+    cpos,
   } = useSimulator();
 
   // 新增租戶表單狀態
@@ -128,7 +129,7 @@ export default function HubRouterPage() {
             <span style={{ textAlign: "center" }}></span>
             <span style={{ textAlign: "center" }}>HUB 識別匹配密鑰</span>
             <span style={{ textAlign: "center" }}></span>
-            <span>路由轉送目標 (eMSP)</span>
+            <span>對接憑證 (Token B)</span>
           </div>
 
           <div
@@ -139,41 +140,54 @@ export default function HubRouterPage() {
               marginTop: "12px",
             }}
           >
-            {/* Rule 1 */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, 1fr)",
-                alignItems: "center",
-                fontSize: "13px",
-                fontFamily: "var(--font-mono)",
-                background: "rgba(255,255,255,0.01)",
-                padding: "10px 0",
-              }}
-            >
-              <span style={{ color: "var(--accent-blue)" }}>etreego</span>
-              <span style={{ textAlign: "center", color: "var(--text-muted)" }}>
-                ➔
-              </span>
-              <span
+            {cpos.map((cpo) => (
+              <div
+                key={cpo.id}
                 style={{
-                  textAlign: "center",
-                  background: "rgba(239, 68, 68, 0.1)",
-                  border: "1px solid rgba(239, 68, 68, 0.2)",
-                  color: "var(--accent-red)",
-                  padding: "2px 0",
-                  borderRadius: "4px",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(5, 1fr)",
+                  alignItems: "center",
+                  fontSize: "13px",
+                  fontFamily: "var(--font-mono)",
+                  background: "rgba(255,255,255,0.01)",
+                  padding: "10px 0",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.02)",
                 }}
               >
-                "TW" + "ETG"
-              </span>
-              <span style={{ textAlign: "center", color: "var(--text-muted)" }}>
-                ➔
-              </span>
-              <span style={{ color: "var(--accent-green)" }}>
-                EMSP-LOCAL (自訂)
-              </span>
-            </div>
+                <span style={{ color: "var(--accent-blue)", fontWeight: 500 }}>
+                  {cpo.name || "未命名"}
+                </span>
+                <span style={{ textAlign: "center", color: "var(--text-muted)" }}>
+                  ➔
+                </span>
+                <span
+                  style={{
+                    textAlign: "center",
+                    background: "rgba(239, 68, 68, 0.1)",
+                    border: "1px solid rgba(239, 68, 68, 0.2)",
+                    color: "var(--accent-red)",
+                    padding: "2px 0",
+                    borderRadius: "4px",
+                  }}
+                >
+                  "{cpo.countryCode}" + "{cpo.partyId}"
+                </span>
+                <span style={{ textAlign: "center", color: "var(--text-muted)" }}>
+                  ➔
+                </span>
+                <span
+                  style={{
+                    color: "var(--accent-green)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={cpo.credential?.tokenB || ""}
+                >
+                  {cpo.credential?.tokenB || "N/A"}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -184,12 +198,27 @@ export default function HubRouterPage() {
           <Plus size={18} style={{ color: "var(--accent-red)" }} />
           <span>動態註冊 CPO / EMSP 漫遊廠商 (Onboard Tenant)</span>
         </h3>
-        <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
-          在這裡可以直接向 HUB 動態建立新的廠商設定與 OCPI 憑證關係，免重置資料庫，即刻生效。
+        <p
+          style={{
+            fontSize: "12px",
+            color: "var(--text-muted)",
+            marginTop: "4px",
+          }}
+        >
+          在這裡可以直接向 HUB 動態建立新的廠商設定與 OCPI
+          憑證關係，免重置資料庫，即刻生效。
         </p>
 
         {/* Selector Tabs */}
-        <div style={{ display: "flex", gap: "8px", marginTop: "16px", borderBottom: "1px solid rgba(255, 255, 255, 0.05)", paddingBottom: "12px" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            marginTop: "16px",
+            borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+            paddingBottom: "12px",
+          }}
+        >
           <button
             type="button"
             onClick={() => setTenantType("CPO")}
@@ -208,8 +237,22 @@ export default function HubRouterPage() {
           </button>
         </div>
 
-        <form onSubmit={handleRegisterTenant} style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+        <form
+          onSubmit={handleRegisterTenant}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px",
+            marginTop: "16px",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gap: "16px",
+            }}
+          >
             <div className="form-group">
               <label>國家代碼 (Country Code)</label>
               <input
@@ -217,7 +260,9 @@ export default function HubRouterPage() {
                 required
                 placeholder="TW"
                 value={newCountryCode}
-                onChange={(e) => setNewCountryCode(e.target.value.toUpperCase())}
+                onChange={(e) =>
+                  setNewCountryCode(e.target.value.toUpperCase())
+                }
                 style={{ fontFamily: "var(--font-mono)", fontSize: "13px" }}
               />
             </div>
@@ -227,7 +272,7 @@ export default function HubRouterPage() {
               <input
                 type="text"
                 required
-                placeholder={tenantType === "CPO" ? "EVZ" : "EVZ_EMSP"}
+                placeholder={tenantType === "CPO" ? "CPO" : "EMSP"}
                 value={newPartyId}
                 onChange={(e) => setNewPartyId(e.target.value.toUpperCase())}
                 style={{ fontFamily: "var(--font-mono)", fontSize: "13px" }}
@@ -239,7 +284,9 @@ export default function HubRouterPage() {
               <input
                 type="text"
                 required
-                placeholder={tenantType === "CPO" ? "潔能氏EVEZ" : "潔能氏EVEZ EMSP"}
+                placeholder={
+                  tenantType === "CPO" ? "SMARTHUB" : "SMARTHUB EMSP"
+                }
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 style={{ fontSize: "13px" }}
@@ -247,11 +294,19 @@ export default function HubRouterPage() {
             </div>
 
             <div className="form-group">
-              <label>{tenantType === "CPO" ? "對接憑證 (Token B)" : "目標接收端金鑰 (Token C)"}</label>
+              <label>
+                {tenantType === "CPO"
+                  ? "對接憑證 (Token B)"
+                  : "目標接收端金鑰 (Token C)"}
+              </label>
               <input
                 type="text"
                 required
-                placeholder={tenantType === "CPO" ? "mock_evz_token_b_123" : "mock_evz_token_c_789"}
+                placeholder={
+                  tenantType === "CPO"
+                    ? "mock_cpo_token_b_123"
+                    : "mock_emsp_token_c_123"
+                }
                 value={newTokenVal}
                 onChange={(e) => setNewTokenVal(e.target.value)}
                 style={{ fontFamily: "var(--font-mono)", fontSize: "13px" }}
@@ -278,12 +333,14 @@ export default function HubRouterPage() {
             className="button"
             style={{
               alignSelf: "flex-end",
-              background: tenantType === "CPO" 
-                ? "linear-gradient(135deg, var(--accent-blue), #1d4ed8)" 
-                : "linear-gradient(135deg, var(--accent-green), #047857)",
-              boxShadow: tenantType === "CPO"
-                ? "0 4px 15px rgba(59, 130, 246, 0.25)"
-                : "0 4px 15px rgba(16, 185, 129, 0.25)",
+              background:
+                tenantType === "CPO"
+                  ? "linear-gradient(135deg, var(--accent-blue), #1d4ed8)"
+                  : "linear-gradient(135deg, var(--accent-green), #047857)",
+              boxShadow:
+                tenantType === "CPO"
+                  ? "0 4px 15px rgba(59, 130, 246, 0.25)"
+                  : "0 4px 15px rgba(16, 185, 129, 0.25)",
               padding: "0 24px",
               height: "38px",
               fontSize: "12px",
