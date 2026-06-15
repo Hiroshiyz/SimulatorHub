@@ -2,10 +2,12 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { PartyContext } from "../common/decorators/current-party.decorator";
 import axios from "axios";
+import { Subject } from "rxjs";
 
 @Injectable()
 export class OcpiService {
   private readonly logger = new Logger(OcpiService.name);
+  public readonly commands$ = new Subject<{ type: string; data: any }>();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -298,6 +300,8 @@ export class OcpiService {
       `[Tenant: ${party.id}] Received START_SESSION Command from EMSP: ${JSON.stringify(payload, null, 2)}`,
     );
 
+    this.commands$.next({ type: "START_SESSION", data: payload });
+
     return this.wrapResponse(
       {
         status: "ACCEPTED",
@@ -312,6 +316,9 @@ export class OcpiService {
     this.logger.log(
       `[Tenant: ${party.id}] Received STOP_SESSION Command from EMSP: ${JSON.stringify(payload, null, 2)}`,
     );
+
+    this.commands$.next({ type: "STOP_SESSION", data: payload });
+
     return this.wrapResponse(
       {
         status: "ACCEPTED",

@@ -1,12 +1,25 @@
-import { Injectable, HttpException, HttpStatus, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  HttpException,
+  HttpStatus,
+  Logger,
+  MessageEvent,
+  OnModuleInit,
+} from "@nestjs/common";
 import axios from "axios";
 import { PrismaService } from "../prisma/prisma.service";
+import { OcpiService } from "../ocpi/ocpi.service";
+import { Observable } from "rxjs";
+import { map } from "rxjs/operators";
 
 @Injectable()
-export class SimulatorService {
+export class SimulatorService implements OnModuleInit {
   private readonly logger = new Logger(SimulatorService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ocpiService: OcpiService,
+  ) {}
 
   // Helper to dynamically get headers & base URL for a given CPO party
   private async getTenantConfig(countryCode: string, partyId: string) {
@@ -196,5 +209,209 @@ export class SimulatorService {
         updatedAt: "desc",
       },
     });
+  }
+
+  getEventStream(): Observable<MessageEvent> {
+    return this.ocpiService.commands$.pipe(
+      map((event) => ({ data: event }) as MessageEvent),
+    );
+  }
+
+  async onModuleInit() {
+    this.logger.log("Verifying and upserting EMSP channels in database...");
+    const defaultEmsps = [
+      {
+        countryCode: "TW",
+        partyId: "EMSP",
+        name: "Taiwan Roaming EMSP (Local)",
+        url: "http://localhost:5053",
+      },
+      {
+        countryCode: "TW",
+        partyId: "SMB",
+        name: "SMARTHUBLCU",
+        url: "http://localhost:3030/simulator/mock-emsp/EVA",
+      },
+    ];
+
+    for (const emsp of defaultEmsps) {
+      try {
+        const party = await this.prisma.party.upsert({
+          where: {
+            countryCode_partyId_role: {
+              countryCode: emsp.countryCode,
+              partyId: emsp.partyId,
+              role: "EMSP",
+            },
+          },
+          update: {
+            name: emsp.name,
+          },
+          create: {
+            countryCode: emsp.countryCode,
+            partyId: emsp.partyId,
+            role: "EMSP",
+            name: emsp.name,
+          },
+        });
+
+        await this.prisma.credential.upsert({
+          where: { partyId: party.id },
+          update: {
+            url: emsp.url,
+          },
+          create: {
+            partyId: party.id,
+            url: emsp.url,
+            tokenB: `mock_token_b_${emsp.partyId.toLowerCase()}`,
+            tokenC: `mock_token_c_${emsp.partyId.toLowerCase()}`,
+          },
+        });
+      } catch (err: any) {
+        this.logger.error(
+          `Failed to upsert default EMSP ${emsp.partyId}: ${err.message}`,
+        );
+      }
+    }
+  }
+
+  async getEmspStatus() {
+    const emsps = await this.prisma.party.findMany({
+      where: { role: "EMSP" },
+      include: { credential: true },
+    });
+
+    const results = [];
+    for (const emsp of emsps) {
+      let isOnline = false;
+      let latency = 0;
+      let error = null;
+      const url = emsp.credential?.url;
+
+      if (url) {
+        const startTime = Date.now();
+        try {
+          const checkUrl = url.includes("mock-emsp")
+            ? `${url}/health`
+            : `${url}/ocpi/2.2.1/versions`;
+          await axios.get(checkUrl, { timeout: 1500 });
+          isOnline = true;
+          latency = Date.now() - startTime;
+        } catch (err: any) {
+          try {
+            await axios.get(url, { timeout: 1500 });
+            isOnline = true;
+            latency = Date.now() - startTime;
+          } catch (err2: any) {
+            error = err2.message;
+          }
+        }
+      }
+
+      results.push({
+        id: emsp.id,
+        countryCode: emsp.countryCode,
+        partyId: emsp.partyId,
+        name: emsp.name || `${emsp.countryCode}-${emsp.partyId}`,
+        url: url || null,
+        online: isOnline,
+        latency,
+        error,
+      });
+    }
+
+    return results;
+  }
+
+  async registerCpo(data: {
+    countryCode: string;
+    partyId: string;
+    name: string;
+    tokenB: string;
+  }) {
+    this.logger.log(
+      `Registering CPO tenant: ${data.countryCode}/${data.partyId}`,
+    );
+    const party = await this.prisma.party.upsert({
+      where: {
+        countryCode_partyId_role: {
+          countryCode: data.countryCode.toUpperCase(),
+          partyId: data.partyId.toUpperCase(),
+          role: "CPO",
+        },
+      },
+      update: {
+        name: data.name,
+      },
+      create: {
+        countryCode: data.countryCode.toUpperCase(),
+        partyId: data.partyId.toUpperCase(),
+        role: "CPO",
+        name: data.name,
+        rateLimit: 100,
+        rateLimitWindow: 60,
+      },
+    });
+
+    await this.prisma.credential.upsert({
+      where: { partyId: party.id },
+      update: {
+        tokenB: data.tokenB,
+      },
+      create: {
+        partyId: party.id,
+        tokenB: data.tokenB,
+      },
+    });
+
+    return party;
+  }
+
+  async registerEmsp(data: {
+    countryCode: string;
+    partyId: string;
+    name: string;
+    url: string;
+    tokenC: string;
+  }) {
+    this.logger.log(
+      `Registering EMSP tenant: ${data.countryCode}/${data.partyId}`,
+    );
+    const party = await this.prisma.party.upsert({
+      where: {
+        countryCode_partyId_role: {
+          countryCode: data.countryCode.toUpperCase(),
+          partyId: data.partyId.toUpperCase(),
+          role: "EMSP",
+        },
+      },
+      update: {
+        name: data.name,
+      },
+      create: {
+        countryCode: data.countryCode.toUpperCase(),
+        partyId: data.partyId.toUpperCase(),
+        role: "EMSP",
+        name: data.name,
+        rateLimit: 100,
+        rateLimitWindow: 60,
+      },
+    });
+
+    await this.prisma.credential.upsert({
+      where: { partyId: party.id },
+      update: {
+        url: data.url,
+        tokenC: data.tokenC,
+      },
+      create: {
+        partyId: party.id,
+        url: data.url,
+        tokenB: `mock_token_b_${data.partyId.toLowerCase()}`,
+        tokenC: data.tokenC,
+      },
+    });
+
+    return party;
   }
 }

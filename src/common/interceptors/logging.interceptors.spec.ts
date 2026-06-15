@@ -50,7 +50,7 @@ describe("LoggingInterceptor", () => {
         expect(val).toEqual({ data: "successResponse" });
         expect(loggerLogSpy).toHaveBeenCalled();
         const logMsg = loggerLogSpy.mock.calls[0][0];
-        expect(logMsg).toContain("[HTTP SUCCESS]GET /ocpi/versions");
+        expect(logMsg).toContain("[HTTP SUCCESS] GET /ocpi/versions");
         expect(logMsg).toContain("Response Body: {\"data\":\"successResponse\"}");
         expect(logMsg).toContain("Request Headers: {\"authorization\":\"******************\"}");
         done();
@@ -76,7 +76,7 @@ describe("LoggingInterceptor", () => {
         expect(err).toEqual({ statusCode: 400, message: "Bad Request" });
         expect(loggerErrorSpy).toHaveBeenCalled();
         const errorMsg = loggerErrorSpy.mock.calls[0][0];
-        expect(errorMsg).toContain("[HTTP ERROR]POST /simulate/cdrs");
+        expect(errorMsg).toContain("[HTTP ERROR] POST /simulate/cdrs");
         expect(errorMsg).toContain("Error Message: Bad Request");
         done();
       },

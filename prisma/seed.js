@@ -27,7 +27,7 @@ async function main() {
         },
       },
       update: {
-        name: "New Taipei Charging Station CPO",
+        name: "CPO",
         rateLimit: 100,
         rateLimitWindow: 60,
       },
@@ -35,7 +35,7 @@ async function main() {
         countryCode: "TW",
         partyId: "CPO",
         role: "CPO",
-        name: "New Taipei Charging Station CPO",
+        name: "CPO",
         rateLimit: 100,
         rateLimitWindow: 60,
       },
@@ -44,12 +44,12 @@ async function main() {
     await prisma.credential.upsert({
       where: { partyId: cpoParty.id },
       update: {
-        tokenB: "fRq8p2jwOg_Wy1aV2H3rTSolPpmlMSbDw7J3gQBJmZ4",
+        tokenB: "mock_cpo_token_b_123",
         tokenC: "mock_cpo_token_c_123",
       },
       create: {
         partyId: cpoParty.id,
-        tokenB: "fRq8p2jwOg_Wy1aV2H3rTSolPpmlMSbDw7J3gQBJmZ4", // Align with static token in .env
+        tokenB: "mock_cpo_token_b_123", // Align with static token in .env
         tokenC: "mock_cpo_token_c_123",
       },
     });
@@ -82,13 +82,13 @@ async function main() {
     await prisma.credential.upsert({
       where: { partyId: emspParty.id },
       update: {
-        tokenB: "mock_emsp_token_b_456",
+        tokenB: "fRq8p2jwOg_Wy1aV2H3rTSolPpmlMSbDw7J3gQBJmZ4",
         tokenC: "mock_emsp_token_c_789",
         url: "http://localhost:5053", // Default target EMSP
       },
       create: {
         partyId: emspParty.id,
-        tokenB: "mock_emsp_token_b_456",
+        tokenB: "fRq8p2jwOg_Wy1aV2H3rTSolPpmlMSbDw7J3gQBJmZ4",
         tokenC: "mock_emsp_token_c_789",
         url: "http://localhost:5053",
       },

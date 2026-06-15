@@ -13,6 +13,7 @@ describe("SimulatorController", () => {
     sendSession: jest.fn().mockResolvedValue({ status_code: 1000 }),
     sendCdr: jest.fn().mockResolvedValue({ status_code: 1000 }),
     sendCancelSession: jest.fn().mockResolvedValue({ status_code: 1000 }),
+    getEventStream: jest.fn().mockReturnValue({}),
   };
 
   beforeEach(async () => {
@@ -82,6 +83,13 @@ describe("SimulatorController", () => {
     it("should call service.sendCancelSession", async () => {
       await controller.simulateSendCancelSession("TW", "NPT", "txn_1");
       expect(service.sendCancelSession).toHaveBeenCalledWith("TW", "NPT", "txn_1");
+    });
+  });
+
+  describe("sendEvents", () => {
+    it("should call service.getEventStream", () => {
+      controller.sendEvents();
+      expect(service.getEventStream).toHaveBeenCalled();
     });
   });
 });

@@ -1,11 +1,16 @@
 import {
   Controller,
   Post,
+  Put,
+  Patch,
   Get,
   Body,
   Param,
+  Sse,
+  MessageEvent,
 } from "@nestjs/common";
 import { SimulatorService } from "./simulator.service";
+import { Observable } from "rxjs";
 
 @Controller("simulator")
 export class SimulatorController {
@@ -101,5 +106,90 @@ export class SimulatorController {
   @Get("health")
   healthCheck() {
     return { status: "OK" };
+  }
+
+  @Sse("events")
+  sendEvents(): Observable<MessageEvent> {
+    return this.simulatorService.getEventStream();
+  }
+
+  // --- EMSP Health & Status Checks ---
+
+  @Get("emsps/status")
+  async getEmspsStatus() {
+    return this.simulatorService.getEmspStatus();
+  }
+// --- Add CPO & EMSP 
+  @Post("cpos")
+  async registerCpo(
+    @Body()
+    body: {
+      countryCode: string;
+      partyId: string;
+      name: string;
+      tokenB: string;
+    },
+  ) {
+    return this.simulatorService.registerCpo(body);
+  }
+
+  @Post("emsps")
+  async registerEmsp(
+    @Body()
+    body: {
+      countryCode: string;
+      partyId: string;
+      name: string;
+      url: string;
+      tokenC: string;
+    },
+  ) {
+    return this.simulatorService.registerEmsp(body);
+  }
+
+  // --- Mock EMSP Receiver (Bypass authentication for simulated CPO -> EMSP endpoints) ---
+
+  @Get("mock-emsp/:partyId/ocpi/2.2.1/versions")
+  mockEmspVersions(@Param("partyId") partyId: string) {
+    return {
+      status_code: 1000,
+      status_message: "Success",
+      data: [{ version: "2.2.1", url: `http://localhost:3030/simulator/mock-emsp/${partyId}/ocpi/2.2.1` }]
+    };
+  }
+
+  @Get("mock-emsp/:partyId/health")
+  mockEmspHealth(@Param("partyId") partyId: string) {
+    return { status: "OK", partyId };
+  }
+
+  @Get("mock-emsp/:partyId")
+  mockEmspBase(@Param("partyId") partyId: string) {
+    return { status: "OK", description: `Mock EMSP receiver for ${partyId}` };
+  }
+
+  @Put("mock-emsp/:partyId/ocpi/2.2.1/locations/:countryCode/:partyId/:locationId")
+  mockPutLocation() {
+    return { status_code: 1000, status_message: "Success" };
+  }
+
+  @Patch("mock-emsp/:partyId/ocpi/2.2.1/locations/:countryCode/:partyId/:locationId/:evseUid")
+  mockPatchEvse() {
+    return { status_code: 1000, status_message: "Success" };
+  }
+
+  @Put("mock-emsp/:partyId/ocpi/2.2.1/tariffs/:countryCode/:partyId/:tariffId")
+  mockPutTariff() {
+    return { status_code: 1000, status_message: "Success" };
+  }
+
+  @Put("mock-emsp/:partyId/ocpi/2.2.1/sessions/:countryCode/:partyId/:sessionId")
+  mockPutSession() {
+    return { status_code: 1000, status_message: "Success" };
+  }
+
+  @Post("mock-emsp/:partyId/ocpi/2.2.1/cdrs")
+  mockPostCdr() {
+    return { status_code: 1000, status_message: "Success" };
   }
 }

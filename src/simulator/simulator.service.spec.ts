@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { SimulatorService } from "./simulator.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { OcpiService } from "../ocpi/ocpi.service";
 import axios from "axios";
 
 jest.mock("axios");
@@ -23,6 +24,14 @@ describe("SimulatorService", () => {
         {
           provide: PrismaService,
           useValue: mockPrisma,
+        },
+        {
+          provide: OcpiService,
+          useValue: {
+            commands$: {
+              pipe: jest.fn(),
+            },
+          },
         },
       ],
     }).compile();

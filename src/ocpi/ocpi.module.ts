@@ -6,5 +6,7 @@ import { OcpiService } from "./ocpi.service";
   imports: [],
   controllers: [OcpiController],
   providers: [OcpiService],
+  exports: [OcpiService],
 })
 export class OcpiModule {}
+
