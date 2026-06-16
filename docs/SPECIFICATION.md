@@ -11,14 +11,14 @@
 
 ```mermaid
 graph TD
-    TestRunner[測試人員 / API 測試工具] -->|1. 模擬樁狀態變更或觸發資料| MockHub[OCPI Mock Hub (Port: 3030)]
+    TestRunner[測試人員 / API 測試工具] -->|1. 模擬樁狀態變更或觸發資料| MockHub["OCPI Mock Hub (Port: 3030)"]
 
-    subgraph CPO Receiver
+    subgraph CPO_Receiver["CPO Receiver"]
         MockHub -->|2. 接收並儲存 CPO 資訊| DB[(Prisma PostgreSQL)]
     end
 
-    subgraph Multi-Tenant Routing (分流與廣播)
-        MockHub -->|3. 動態轉發 OCPI 請求| LocalEMSP[本地 EMSP (Port: 5053)]
+    subgraph Multi_Tenant_Routing["Multi-Tenant Routing (分流與廣播)"]
+        MockHub -->|3. 動態轉發 OCPI 請求| LocalEMSP["本地 EMSP (Port: 5053)"]
         MockHub -->|3. 動態轉發 OCPI 請求| Evoasis[EVOASIS 模擬端]
         MockHub -->|3. 動態轉發 OCPI 請求| FET[uTagGo 模擬端]
         MockHub -->|3. 動態轉發 OCPI 請求| SMB[SMARTHUBLCU 模擬端]
