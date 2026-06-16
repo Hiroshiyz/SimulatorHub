@@ -9,6 +9,7 @@ import {
   Get,
   UseGuards,
   ForbiddenException,
+  Headers,
 } from "@nestjs/common";
 import { OcpiService } from "./ocpi.service";
 import { ApiKeyGuard } from "../common/gurads/api-key.guard";
@@ -124,9 +125,20 @@ export class OcpiController {
     @Param("partyId") partyId: string,
     @Param("sessionId") sessionId: string,
     @Body() body: any,
+    @Headers() headers: any,
   ) {
     this.validatePartyMatch(party, countryCode, partyId);
-    return this.ocpiService.handlePutSession(party, countryCode, partyId, sessionId, body);
+    const toPartyId = headers["ocpi-to-party-id"];
+    const toCountryCode = headers["ocpi-to-country-code"];
+    return this.ocpiService.handlePutSession(
+      party,
+      countryCode,
+      partyId,
+      sessionId,
+      body,
+      toPartyId,
+      toCountryCode,
+    );
   }
 
   // --- OCPI CDRs Receiver ---

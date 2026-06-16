@@ -1,5 +1,5 @@
 import { useSimulator } from "../context/SimulatorContext";
-import { Zap, Cpu, Layers, Flame, FileText } from "./Icons";
+import { Zap, Cpu, Layers, FileText } from "./Icons";
 
 export default function Sidebar() {
   const {
@@ -11,7 +11,9 @@ export default function Sidebar() {
     sessions,
   } = useSimulator();
 
-  const activeSessionsCount = sessions.filter((s) => s.status === "ACTIVE").length;
+  const activeSessionsCount = sessions.filter(
+    (s) => s.status === "ACTIVE",
+  ).length;
 
   return (
     <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
@@ -54,7 +56,7 @@ export default function Sidebar() {
             }}
           >
             <Cpu size={18} />
-            多樁充電模擬 ({activeSessionsCount})
+            CPO 多樁充電模擬 ({activeSessionsCount})
           </a>
         </li>
         <li>
@@ -66,10 +68,10 @@ export default function Sidebar() {
             }}
           >
             <Layers size={18} />
-            HUB 智能路由
+            HUB 控制面板
           </a>
         </li>
-        <li>
+        {/* <li>
           <a
             className={`nav-item ${activeTab === "autocharge" ? "active" : ""}`}
             onClick={() => {
@@ -80,7 +82,7 @@ export default function Sidebar() {
             <Flame size={18} />
             AutoCharge
           </a>
-        </li>
+        </li> */}
         <li>
           <a
             className={`nav-item ${activeTab === "ocpi-payload" ? "active" : ""}`}

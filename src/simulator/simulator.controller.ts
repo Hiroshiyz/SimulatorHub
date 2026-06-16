@@ -40,7 +40,12 @@ export class SimulatorController {
     @Param("tariffId") tariffId: string,
     @Body() body: any,
   ) {
-    return this.simulatorService.sendTariff(countryCode, partyId, tariffId, body);
+    return this.simulatorService.sendTariff(
+      countryCode,
+      partyId,
+      tariffId,
+      body,
+    );
   }
 
   @Post("simulate/locations/:countryCode/:partyId/:locationId/:evseUid")
@@ -67,7 +72,12 @@ export class SimulatorController {
     @Param("sessionId") sessionId: string,
     @Body() body: any,
   ) {
-    return this.simulatorService.sendSession(countryCode, partyId, sessionId, body);
+    return this.simulatorService.sendSession(
+      countryCode,
+      partyId,
+      sessionId,
+      body,
+    );
   }
 
   @Post("simulate/cdrs")
@@ -103,41 +113,7 @@ export class SimulatorController {
     return this.simulatorService.getCdrs();
   }
 
-  @Get("cpos")
-  async getCpos() {
-    return this.simulatorService.getCpos();
-  }
-
-  @Get("health")
-  healthCheck() {
-    return { status: "OK" };
-  }
-
-  @Sse("events")
-  sendEvents(): Observable<MessageEvent> {
-    return this.simulatorService.getEventStream();
-  }
-
-  // --- EMSP Health & Status Checks ---
-
-  @Get("emsps/status")
-  async getEmspsStatus() {
-    return this.simulatorService.getEmspStatus();
-  }
-// --- Add CPO & EMSP 
-  @Post("cpos")
-  async registerCpo(
-    @Body()
-    body: {
-      countryCode: string;
-      partyId: string;
-      name: string;
-      tokenB: string;
-    },
-  ) {
-    return this.simulatorService.registerCpo(body);
-  }
-
+  // emsp
   @Post("emsps")
   async registerEmsp(
     @Body()
@@ -152,6 +128,52 @@ export class SimulatorController {
     return this.simulatorService.registerEmsp(body);
   }
 
+  @Get("emsps/status")
+  async getEmspsStatus() {
+    return this.simulatorService.getEmspStatus();
+  }
+  // cpo
+  @Post("cpos")
+  async registerCpo(
+    @Body()
+    body: {
+      countryCode: string;
+      partyId: string;
+      name: string;
+      tokenB: string;
+    },
+  ) {
+    return this.simulatorService.registerCpo(body);
+  }
+  @Get("cpos")
+  async getCpos() {
+    return this.simulatorService.getCpos();
+  }
+
+  // sync all locations
+  @Post("locations/sync-all")
+  async syncAllLocations() {
+    return this.simulatorService.syncAllLocations();
+  }
+
+  // health check
+  @Get("health")
+  healthCheck() {
+    return { status: "OK" };
+  }
+  // sse
+  @Sse("events")
+  sendEvents(): Observable<MessageEvent> {
+    return this.simulatorService.getEventStream();
+  }
+
+
+
+
+
+
+
+
   // --- Mock EMSP Receiver (Bypass authentication for simulated CPO -> EMSP endpoints) ---
 
   @Get("mock-emsp/:partyId/ocpi/2.2.1/versions")
@@ -159,7 +181,12 @@ export class SimulatorController {
     return {
       status_code: 1000,
       status_message: "Success",
-      data: [{ version: "2.2.1", url: `http://localhost:3030/simulator/mock-emsp/${partyId}/ocpi/2.2.1` }]
+      data: [
+        {
+          version: "2.2.1",
+          url: `http://localhost:3030/simulator/mock-emsp/${partyId}/ocpi/2.2.1`,
+        },
+      ],
     };
   }
 
@@ -173,12 +200,16 @@ export class SimulatorController {
     return { status: "OK", description: `Mock EMSP receiver for ${partyId}` };
   }
 
-  @Put("mock-emsp/:partyId/ocpi/2.2.1/locations/:countryCode/:partyId/:locationId")
+  @Put(
+    "mock-emsp/:partyId/ocpi/2.2.1/locations/:countryCode/:partyId/:locationId",
+  )
   mockPutLocation() {
     return { status_code: 1000, status_message: "Success" };
   }
 
-  @Patch("mock-emsp/:partyId/ocpi/2.2.1/locations/:countryCode/:partyId/:locationId/:evseUid")
+  @Patch(
+    "mock-emsp/:partyId/ocpi/2.2.1/locations/:countryCode/:partyId/:locationId/:evseUid",
+  )
   mockPatchEvse() {
     return { status_code: 1000, status_message: "Success" };
   }
@@ -188,7 +219,9 @@ export class SimulatorController {
     return { status_code: 1000, status_message: "Success" };
   }
 
-  @Put("mock-emsp/:partyId/ocpi/2.2.1/sessions/:countryCode/:partyId/:sessionId")
+  @Put(
+    "mock-emsp/:partyId/ocpi/2.2.1/sessions/:countryCode/:partyId/:sessionId",
+  )
   mockPutSession() {
     return { status_code: 1000, status_message: "Success" };
   }

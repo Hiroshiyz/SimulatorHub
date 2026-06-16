@@ -10,6 +10,7 @@ export default function HubRouterPage() {
     addLog,
     handleAddCpo,
     handleAddEmsp,
+    handleSyncAllLocations,
     cpos,
   } = useSimulator();
 
@@ -85,10 +86,39 @@ export default function HubRouterPage() {
     <div className="workspace">
       {/* Topology Header */}
       <div className="card">
-        <h3 className="card-title">
-          <Layers size={18} style={{ color: "var(--accent-red)" }} />
-          <span>OCPI HUB 智能分發路由匹配規則 (Routing Policy)</span>
-        </h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 className="card-title" style={{ margin: 0 }}>
+            <Layers size={18} style={{ color: "var(--accent-red)" }} />
+            <span>CPO List</span>
+          </h3>
+          <button
+            onClick={async () => {
+              if (confirm("是否要將資料庫中現有的所有 CPO 場站資訊，補發/同步至所有已啟用的 EMSP 接收端？")) {
+                const res = await handleSyncAllLocations();
+                if (res.success) {
+                  alert(`成功補發同步 ${res.count} 筆場站資訊！`);
+                } else {
+                  alert("補發場站資訊失敗，請檢查後端控制台日誌。");
+                }
+              }
+            }}
+            className="button"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 12px",
+              fontSize: "12px",
+              height: "32px",
+              background: "linear-gradient(135deg, var(--accent-red), #b91c1c)",
+              boxShadow: "0 4px 15px rgba(239, 68, 68, 0.25)",
+            }}
+            title="將所有 Locations 補發廣播給所有 EMSP"
+          >
+            <RefreshCw size={14} />
+            <span>補發所有場站資訊</span>
+          </button>
+        </div>
         <p
           style={{
             fontSize: "13px",
@@ -157,7 +187,9 @@ export default function HubRouterPage() {
                 <span style={{ color: "var(--accent-blue)", fontWeight: 500 }}>
                   {cpo.name || "未命名"}
                 </span>
-                <span style={{ textAlign: "center", color: "var(--text-muted)" }}>
+                <span
+                  style={{ textAlign: "center", color: "var(--text-muted)" }}
+                >
                   ➔
                 </span>
                 <span
@@ -172,7 +204,9 @@ export default function HubRouterPage() {
                 >
                   "{cpo.countryCode}" + "{cpo.partyId}"
                 </span>
-                <span style={{ textAlign: "center", color: "var(--text-muted)" }}>
+                <span
+                  style={{ textAlign: "center", color: "var(--text-muted)" }}
+                >
                   ➔
                 </span>
                 <span

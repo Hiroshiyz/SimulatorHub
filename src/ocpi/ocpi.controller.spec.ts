@@ -118,8 +118,20 @@ describe("OcpiController", () => {
   describe("putSession", () => {
     it("should allow matching tenant to put session", async () => {
       const payload = { id: "sess-1" };
-      await controller.putSession(mockParty, "TW", "NPT", "sess-1", payload);
-      expect(service.handlePutSession).toHaveBeenCalledWith(mockParty, "TW", "NPT", "sess-1", payload);
+      const mockHeaders = {
+        "ocpi-to-party-id": "EMSP",
+        "ocpi-to-country-code": "TW",
+      };
+      await controller.putSession(mockParty, "TW", "NPT", "sess-1", payload, mockHeaders);
+      expect(service.handlePutSession).toHaveBeenCalledWith(
+        mockParty,
+        "TW",
+        "NPT",
+        "sess-1",
+        payload,
+        "EMSP",
+        "TW",
+      );
     });
   });
 

@@ -26,7 +26,11 @@ export class ThrottlerGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
 
     // Bypass rate limiting for local simulator API endpoints
-    if (request.url && (request.url.startsWith("/simulator") || request.url.startsWith("simulator"))) {
+    if (
+      request.url &&
+      (request.url.startsWith("/simulator") ||
+        request.url.startsWith("simulator"))
+    ) {
       return true;
     }
 
@@ -121,7 +125,6 @@ export class ThrottlerGuard implements CanActivate {
         `Failed to execute rate limit checks in Redis for key ${key}:`,
         err,
       );
-      // Fail open: if Redis is down, we allow the request but log the error
     }
 
     return true;
