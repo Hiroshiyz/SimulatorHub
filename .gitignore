@@ -7,3 +7,4 @@ public
 coverage
 
 /generated/prisma
+package-lock.json
