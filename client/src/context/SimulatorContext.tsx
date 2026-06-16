@@ -1380,7 +1380,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         console.log("SSE Event Received:", parsed);
 
         if (parsed.type === "START_SESSION") {
-          const { location_id, evse_uid, authorization_reference } =
+          const { location_id, evse_uid, authorization_reference, token, emsp_id } =
             parsed.data;
           const locId = location_id || "loc_001";
           const evseU = evse_uid || "TW-CPO-EVSE-001";
@@ -1399,6 +1399,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
               false,
               null,
               authorization_reference,
+              false,
+              token?.uid || "MANUAL-TOKEN-CPO",
+              emsp_id || null,
             );
           }
         } else if (parsed.type === "STOP_SESSION") {

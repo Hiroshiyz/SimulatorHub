@@ -220,14 +220,23 @@ export class SimulatorController {
   }
 
   @Put(
-    "mock-emsp/:partyId/ocpi/2.2.1/sessions/:countryCode/:partyId/:sessionId",
+    "mock-emsp/:emspPartyId/ocpi/2.2.1/sessions/:countryCode/:partyId/:sessionId",
   )
-  mockPutSession() {
+  async mockPutSession(
+    @Param("emspPartyId") emspPartyId: string,
+    @Param("sessionId") sessionId: string,
+    @Body() body: any,
+  ) {
+    await this.simulatorService.saveEmspSession(emspPartyId, sessionId, body);
     return { status_code: 1000, status_message: "Success" };
   }
 
-  @Post("mock-emsp/:partyId/ocpi/2.2.1/cdrs")
-  mockPostCdr() {
+  @Post("mock-emsp/:emspPartyId/ocpi/2.2.1/cdrs")
+  async mockPostCdr(
+    @Param("emspPartyId") emspPartyId: string,
+    @Body() body: any,
+  ) {
+    await this.simulatorService.saveEmspCdr(emspPartyId, body);
     return { status_code: 1000, status_message: "Success" };
   }
 }

@@ -320,7 +320,13 @@ export class OcpiService {
       `[Tenant: ${party.id}] Received START_SESSION Command from EMSP: ${JSON.stringify(payload, null, 2)}`,
     );
 
-    this.commands$.next({ type: "START_SESSION", data: payload });
+    this.commands$.next({
+      type: "START_SESSION",
+      data: {
+        ...payload,
+        emsp_id: party.id,
+      },
+    });
 
     return this.wrapResponse(
       {

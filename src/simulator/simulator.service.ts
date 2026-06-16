@@ -432,4 +432,74 @@ export class SimulatorService implements OnModuleInit {
 
     return party;
   }
+
+  async saveEmspSession(emspPartyId: string, sessionId: string, payload: any) {
+    const party = await this.prisma.party.findFirst({
+      where: {
+        partyId: emspPartyId.toUpperCase(),
+        role: "EMSP",
+      },
+    });
+    if (!party) {
+      this.logger.warn(`EMSP party not found: ${emspPartyId}`);
+      return;
+    }
+    await this.prisma.session.upsert({
+      where: {
+        partyId_id: {
+          partyId: party.id,
+          id: sessionId,
+        },
+      },
+      create: {
+        partyId: party.id,
+        id: sessionId,
+        locationId: payload.location_id || payload.location?.id || "unknown",
+        evseUid: payload.evse_uid || payload.evse?.uid || "unknown",
+        status: payload.status || "PENDING",
+        kwh: payload.kwh || 0.0,
+        rawJson: payload,
+      },
+      update: {
+        locationId: payload.location_id || payload.location?.id || "unknown",
+        evseUid: payload.evse_uid || payload.evse?.uid || "unknown",
+        status: payload.status,
+        kwh: payload.kwh || 0.0,
+        rawJson: payload,
+      },
+    });
+  }
+
+  async saveEmspCdr(emspPartyId: string, payload: any) {
+    const cdrId = payload.id;
+    if (!cdrId) return;
+
+    const party = await this.prisma.party.findFirst({
+      where: {
+        partyId: emspPartyId.toUpperCase(),
+        role: "EMSP",
+      },
+    });
+    if (!party) {
+      this.logger.warn(`EMSP party not found: ${emspPartyId}`);
+      return;
+    }
+
+    await this.prisma.cdr.upsert({
+      where: {
+        partyId_id: {
+          partyId: party.id,
+          id: cdrId,
+        },
+      },
+      create: {
+        partyId: party.id,
+        id: cdrId,
+        rawJson: payload,
+      },
+      update: {
+        rawJson: payload,
+      },
+    });
+  }
 }
