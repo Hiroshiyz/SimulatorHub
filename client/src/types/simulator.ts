@@ -81,7 +81,15 @@ export interface DbSession {
   kwh: number;
   status: string;
   updatedAt: string;
-  rawJson?: unknown;
+  rawJson?: {
+    emsp_id?: string;
+    total_cost?: {
+      incl_vat?: number;
+      excl_vat?: number;
+    };
+    [key: string]: unknown;
+  };
+  party?: CpoTenant;
 }
 
 export interface DbCdr {

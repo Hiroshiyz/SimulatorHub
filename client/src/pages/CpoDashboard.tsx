@@ -8,7 +8,7 @@ import TerminalConsole from "../components/TerminalConsole";
 import Dashboard from "./Dashboard";
 import CpoSimPage from "./CpoSimPage";
 import HubRouterPage from "./HubRouterPage";
-import AutoChargePage from "./AutoChargePage";
+// import AutoChargePage from "./AutoChargePage";
 import PayloadPage from "./PayloadPage";
 
 export default function CpoDashboard() {
@@ -32,7 +32,7 @@ export default function CpoDashboard() {
           {activeTab === "dashboard" && <Dashboard />}
           {activeTab === "cpo-sim" && <CpoSimPage />}
           {activeTab === "hub-router" && <HubRouterPage />}
-          {activeTab === "autocharge" && <AutoChargePage />}
+          {/* {activeTab === "autocharge" && <AutoChargePage />} */}
           {activeTab === "ocpi-payload" && <PayloadPage />}
         </div>
       </main>

@@ -198,10 +198,17 @@ export class SimulatorService implements OnModuleInit {
 
   async getSessions() {
     return this.prisma.session.findMany({
+      include: {
+        party: true,
+      },
       orderBy: {
         updatedAt: "desc",
       },
     });
+  }
+
+  async syncAllLocations() {
+    return this.ocpiService.syncAllLocations();
   }
 
   async getCdrs() {
@@ -296,7 +303,10 @@ export class SimulatorService implements OnModuleInit {
           const checkUrl = url.includes("mock-emsp")
             ? `${url}/health`
             : `${url}/ocpi/2.2.1/versions`;
-          await axios.get(checkUrl, { timeout: 1500, validateStatus: () => true });
+          await axios.get(checkUrl, {
+            timeout: 1500,
+            validateStatus: () => true,
+          });
           isOnline = true;
           latency = Date.now() - startTime;
         } catch (err: any) {
@@ -362,10 +372,12 @@ export class SimulatorService implements OnModuleInit {
       where: { partyId: party.id },
       update: {
         tokenB: data.tokenB,
+        tokenC: data.tokenB,
       },
       create: {
         partyId: party.id,
         tokenB: data.tokenB,
+        tokenC: data.tokenB,
       },
     });
 
@@ -408,11 +420,12 @@ export class SimulatorService implements OnModuleInit {
       update: {
         url: data.url,
         tokenC: data.tokenC,
+        tokenB: data.tokenC,
       },
       create: {
         partyId: party.id,
         url: data.url,
-        tokenB: `mock_token_b_${data.partyId.toLowerCase()}`,
+        tokenB: data.tokenC,
         tokenC: data.tokenC,
       },
     });

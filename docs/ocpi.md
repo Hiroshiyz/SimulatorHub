@@ -27,6 +27,57 @@ Standard OCPI Response Wrap Structure:
 
 ---
 
+1. Direct Routing
+   Use Case: CDR (Billing), Session (Charging status), Command response.
+
+Transmission Path:
+
+[CPO → HUB]
+
+- OCPI-from-party-id: [CPO_ID]
+- OCPI-to-party-id: [eMSP_ID]
+
+[HUB → eMSP] (Pass-through without modification)
+
+- OCPI-from-party-id: [CPO_ID]
+- OCPI-to-party-id: [eMSP_ID]
+
+---
+
+2. Broadcast Push
+   Use Case: Locations (Charging station info update), Tariffs (Tariff update).
+
+Transmission Path:
+
+[CPO → HUB]
+
+- OCPI-from-party-id: [CPO_ID]
+- OCPI-to-party-id: [HUB_ID]
+
+[HUB → eMSP] (HUB queries all integrated eMSPs and distributes individually)
+
+- OCPI-from-party-id: [HUB_ID]
+- OCPI-to-party-id: [eMSP_ID]
+
+---
+
+3. Open Routing
+   Use Case: Token validation request (initiated by CPO, but destination eMSP is unknown).
+
+Transmission Path:
+
+[CPO → HUB]
+
+- OCPI-from-party-id: [CPO_ID]
+- OCPI-to-party-id: (empty or omitted)
+
+[HUB → eMSP] (HUB queries its internal database, then appends the target eMSP ID)
+
+- OCPI-from-party-id: [CPO_ID]
+- OCPI-to-party-id: [eMSP_ID]
+
+---
+
 ## 1. OCPI Receiver Endpoints (Our Server)
 
 ### 1.1 Version Information

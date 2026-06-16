@@ -125,6 +125,7 @@ interface SimulatorContextType {
     url: string,
     tokenC: string,
   ) => Promise<{ success: boolean; error?: string }>;
+  handleSyncAllLocations: () => Promise<{ success: boolean; count: number }>;
   initializeMockStations: () => Promise<void>;
   handlePatchStatus: (
     locationId: string,
@@ -751,6 +752,24 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       await fetchEmspStatus();
     }
     return { success: res.success, error: res.error };
+  };
+
+  const handleSyncAllLocations = async () => {
+    addLog(
+      "SYSTEM",
+      "SYNC_ALL_LOCATIONS",
+      "手動補發資料庫中所有場站資訊至已啟用之 EMSP 接收端",
+      "info",
+    );
+    const res = await sendRequest(
+      "Sync All Locations",
+      "/simulator/locations/sync-all",
+      "POST",
+      undefined,
+      true,
+    );
+    const dataObj = res.data as { count?: number } | undefined;
+    return { success: res.success, count: dataObj?.count || 0 };
   };
 
   const handlePatchStatus = async (
@@ -1390,6 +1409,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         handleSyncCustomTariff,
         handleAddCpo,
         handleAddEmsp,
+        handleSyncAllLocations,
         initializeMockStations,
         handlePatchStatus,
         startSimulatedCharging,

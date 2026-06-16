@@ -34,10 +34,10 @@ export class OcpiService {
       });
 
       for (const emsp of emspParties) {
-        if (emsp.credential && emsp.credential.url && emsp.credential.tokenC) {
+        if (emsp.credential && emsp.credential.url && emsp.credential.tokenB) {
           const url = `${emsp.credential.url}/ocpi/2.2.1/${subPath}`;
           const headers = {
-            Authorization: `bearer ${emsp.credential.tokenC}`, // Use Token C provided by EMSP
+            Authorization: `bearer ${emsp.credential.tokenB}`, // Use Token B provided by EMSP
             "Content-Type": "application/json; charset=utf-8",
             "OCPI-to-party-id": emsp.partyId,
             "OCPI-to-country-code": emsp.countryCode,
@@ -224,8 +224,28 @@ export class OcpiService {
     partyId: string,
     sessionId: string,
     payload: any,
+    toPartyId?: string,
+    toCountryCode?: string,
   ) {
     this.logger.log(`[Tenant: ${party.id}] Received PUT Session: ${sessionId}`);
+
+    // If toPartyId & toCountryCode are provided, find matching EMSP to record emsp_id in rawJson
+    if (toPartyId && toCountryCode && !payload.emsp_id) {
+      try {
+        const emspParty = await this.prisma.party.findFirst({
+          where: {
+            countryCode: toCountryCode.toUpperCase(),
+            partyId: toPartyId.toUpperCase(),
+            role: "EMSP",
+          },
+        });
+        if (emspParty) {
+          payload.emsp_id = emspParty.id;
+        }
+      } catch (err: any) {
+        this.logger.error(`Failed to map EMSP in handlePutSession: ${err.message}`);
+      }
+    }
 
     await this.prisma.session.upsert({
       where: {
@@ -326,5 +346,51 @@ export class OcpiService {
       1000,
       "Stop session request accepted",
     );
+  }
+
+  // Synchronize/Forward all locations in the DB to all enabled EMSPs on-demand
+  async syncAllLocations() {
+    this.logger.log("Triggered on-demand synchronization of all locations to EMSPs");
+    try {
+      const locations = await this.prisma.location.findMany({
+        include: {
+          party: true,
+          evses: true,
+        },
+      });
+
+      let count = 0;
+      for (const loc of locations) {
+        const party = loc.party; // CPO Party
+        if (!party) continue;
+
+        // Clean EVSEs list to match OCPI structure in forward payload
+        const cleanedEvses = loc.evses.map((e) => {
+          const raw = e.rawJson as any;
+          return {
+            uid: e.uid,
+            evse_id: e.id || raw?.evse_id || e.uid,
+            status: e.status,
+            capabilities: raw?.capabilities || ["REMOTE_START_STOP_ALLOWED"],
+            connectors: raw?.connectors || [],
+          };
+        });
+
+        const rawLoc = loc.rawJson as any;
+        const payload = {
+          ...rawLoc,
+          evses: cleanedEvses,
+        };
+
+        const subPath = `locations/${party.countryCode}/${party.partyId}/${loc.id}`;
+        await this.forwardToEmsps("PUT", subPath, payload);
+        count++;
+      }
+
+      return { success: true, count };
+    } catch (err: any) {
+      this.logger.error(`Failed to sync all locations: ${err.message}`);
+      throw new Error(`Sync all locations failed: ${err.message}`);
+    }
   }
 }
