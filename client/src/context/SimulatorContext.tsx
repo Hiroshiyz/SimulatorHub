@@ -999,7 +999,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     };
 
     const price = tariffPrice;
-    const computedCost = Math.round((20.0 + (mergedSession.kwh || 0.0) * price) * 10) / 10;
+    const computedCost = Math.round(20.0 + (mergedSession.kwh || 0.0) * price);
     mergedSession.cost = computedCost;
 
     setActiveChargingSessions((prev) => {
@@ -1018,7 +1018,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       evse_uid: mergedSession.evseUid,
       status: mergedSession.status || "ACTIVE",
       total_cost: {
-        excl_vat: Number((computedCost * 0.95).toFixed(2)),
+        excl_vat: Math.round(computedCost * 0.95),
         incl_vat: computedCost,
       },
       charging_periods: [
@@ -1064,7 +1064,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         kwh: mergedSession.kwh,
         authorization_reference: mergedSession.sessionId,
         total_cost: {
-          excl_vat: Number((computedCost * 0.95).toFixed(2)),
+          excl_vat: Math.round(computedCost * 0.95),
           incl_vat: computedCost,
         },
         total_energy: mergedSession.kwh,
@@ -1279,7 +1279,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         }
 
         // Price calculation based on current tariffPrice
-        const nextCost = Math.round((20.0 + nextKwh * tariffPrice) * 10) / 10;
+        const nextCost = Math.round(20.0 + nextKwh * tariffPrice);
 
         // Auto Stop when charged to 100%
         if (nextSoc === 100 && session.soc < 100) {
@@ -1321,7 +1321,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           evse_uid: session.evseUid,
           status: session.status || "ACTIVE",
           total_cost: {
-            excl_vat: Number((nextCost * 0.95).toFixed(2)),
+            excl_vat: Math.round(nextCost * 0.95),
             incl_vat: nextCost,
           },
           charging_periods: [
