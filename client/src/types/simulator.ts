@@ -112,6 +112,11 @@ export interface ActiveSessionState {
   soc: number;
   cost: number;
   startTime: string;
+  kw?: number;
+  current?: number;
+  voltage?: number;
+  status?: "ACTIVE" | "COMPLETED" | "INVALID";
+  isAuto?: boolean;
 }
 
 export interface SessionTemplate {

@@ -52,6 +52,8 @@ export default function CpoSimPage() {
     handlePatchStatus,
     handleSyncCustomLocation,
     handleSyncCustomTariff,
+    updateSessionTelemetryAndSend,
+    updateSessionTelemetryOnly,
   } = useSimulator();
 
   const [tariffInput, setTariffInput] = useState<number>(9.5);
@@ -1123,7 +1125,7 @@ export default function CpoSimPage() {
                 alignSelf: "flex-end",
                 background:
                   "linear-gradient(135deg, var(--accent-green), #047857)",
-                boxShadow: "0 4px 15px rgba(59, 130, 246, 0.3)",
+                boxShadow: "0 4px 15px rgba(16, 185, 129, 0.3)",
                 padding: "0 24px",
                 height: "38px",
                 fontSize: "12px",
@@ -1276,19 +1278,133 @@ export default function CpoSimPage() {
                         style={{ width: `${session.soc}%` }}
                       ></div>
                     </div>
-                    <button
-                      onClick={() => stopSimulatedCharging(evse.uid)}
-                      className="button button-secondary"
-                      style={{
-                        padding: "4px 8px",
-                        fontSize: "11px",
-                        color: "var(--accent-red)",
-                        borderColor: "rgba(239, 68, 68, 0.2)",
-                        marginTop: "4px",
-                      }}
-                    >
-                      手動斷電拔槍
-                    </button>
+
+                    {/* Dynamic Telemetry Control Fields */}
+                    <div className="telemetry-control-grid">
+                      <div className="telemetry-input-field">
+                        <label>SoC (%)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={session.soc}
+                          onChange={(e) =>
+                            updateSessionTelemetryOnly(evse.uid, {
+                              soc: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="telemetry-input-field">
+                        <label>功率 (kW)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={session.kw !== undefined ? session.kw : 120}
+                          onChange={(e) =>
+                            updateSessionTelemetryOnly(evse.uid, {
+                              kw: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="telemetry-input-field">
+                        <label>電量 (kWh)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={session.kwh}
+                          onChange={(e) =>
+                            updateSessionTelemetryOnly(evse.uid, {
+                              kwh: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="telemetry-input-field">
+                        <label>電流 (A)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={session.current !== undefined ? session.current : 300}
+                          onChange={(e) =>
+                            updateSessionTelemetryOnly(evse.uid, {
+                              current: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="telemetry-input-field">
+                        <label>電壓 (V)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={session.voltage !== undefined ? session.voltage : 400}
+                          onChange={(e) =>
+                            updateSessionTelemetryOnly(evse.uid, {
+                              voltage: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="telemetry-input-field">
+                        <label>狀態 (Status)</label>
+                        <select
+                          value={session.status || "ACTIVE"}
+                          onChange={(e) =>
+                            updateSessionTelemetryOnly(evse.uid, {
+                              status: e.target.value as "ACTIVE" | "COMPLETED" | "INVALID",
+                            })
+                          }
+                        >
+                          <option value="ACTIVE">ACTIVE</option>
+                          <option value="COMPLETED">COMPLETED</option>
+                          <option value="INVALID">INVALID</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="telemetry-checkbox-row">
+                      <input
+                        type="checkbox"
+                        id={`auto-sim-${evse.uid}`}
+                        checked={session.isAuto !== false}
+                        onChange={(e) =>
+                          updateSessionTelemetryOnly(evse.uid, {
+                            isAuto: e.target.checked,
+                          })
+                        }
+                      />
+                      <label htmlFor={`auto-sim-${evse.uid}`}>啟用自動成長模擬</label>
+                    </div>
+
+                    <div className="telemetry-actions-row">
+                      <button
+                        onClick={() => updateSessionTelemetryAndSend(evse.uid, {})}
+                        className="button telemetry-btn"
+                        style={{
+                          background: "linear-gradient(135deg, var(--accent-blue), #0284c7)",
+                          boxShadow: "0 2px 10px rgba(56, 189, 248, 0.2)",
+                        }}
+                      >
+                        傳送 Session 給 HUB
+                      </button>
+                      <button
+                        onClick={() => stopSimulatedCharging(evse.uid)}
+                        className="button button-secondary telemetry-btn"
+                        style={{
+                          color: "var(--accent-red)",
+                          borderColor: "rgba(239, 68, 68, 0.2)",
+                        }}
+                      >
+                        手動斷電拔槍
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div

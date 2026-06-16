@@ -140,6 +140,15 @@ interface SimulatorContextType {
     customSessId?: string,
   ) => Promise<void>;
   stopSimulatedCharging: (evseUid: string) => Promise<void>;
+  updateSessionTelemetryAndSend: (
+    evseUid: string,
+    fields: Partial<ActiveSessionState>,
+  ) => Promise<void>;
+  updateSessionTelemetryOnly: (
+    evseUid: string,
+    fields: Partial<ActiveSessionState>,
+  ) => void;
+  tariffPrice: number;
   transmitCdr: (cdrId: string) => Promise<void>;
   triggerManualSessionSend: () => Promise<void>;
   triggerManualCdrSend: () => Promise<void>;
@@ -167,6 +176,10 @@ const INITIAL_AUTOCHARGE_MAPPINGS: AutoChargeMapping[] = [
 const SimulatorContext = createContext<SimulatorContextType | undefined>(
   undefined,
 );
+
+function generateRandomCdrId() {
+  return `CDR-${Math.floor(100000 + Math.random() * 900000)}`;
+}
 
 export function SimulatorProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<
@@ -266,6 +279,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
   const [activeChargingSessions, setActiveChargingSessions] = useState<{
     [evseUid: string]: ActiveSessionState;
   }>({});
+
+  const [tariffPrice, setTariffPrice] = useState<number>(9.5);
 
   const terminalBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -603,6 +618,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
 
   // Synchronize Tariff to HUB and EMSP
   const handleSyncTariff = async (energyPrice = 9.5) => {
+    setTariffPrice(energyPrice);
     const tariffPayload = {
       id: "TAR-REGULAR",
       currency: "TWD",
@@ -892,6 +908,19 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     );
 
     if (res.success) {
+      let initialKw = 120.0;
+      const matchedEvse = locationsRef.current
+        .flatMap((l) => l.evses)
+        .find((e) => e.uid === evseUid);
+      if (matchedEvse) {
+        const connectors = matchedEvse.connectors || matchedEvse.rawJson?.connectors;
+        if (connectors?.[0]?.max_electric_power) {
+          initialKw = connectors[0].max_electric_power / 1000;
+        }
+      }
+      const initialVoltage = 400.0;
+      const initialCurrent = Math.round(((initialKw * 1000) / initialVoltage) * 10) / 10;
+
       const activeObj: ActiveSessionState = {
         sessionId: generatedSessId,
         evseUid,
@@ -900,6 +929,11 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         soc: 15.0,
         cost: 0.0,
         startTime: startTimeStr,
+        kw: initialKw,
+        voltage: initialVoltage,
+        current: initialCurrent,
+        status: "ACTIVE",
+        isAuto: true,
       };
 
       setActiveChargingSessions((prev) => ({
@@ -924,96 +958,150 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Stop charging & Generate CDR
-  const stopSimulatedCharging = async (evseUid: string) => {
+  // Update session telemetry only (local state update without sending)
+  const updateSessionTelemetryOnly = (
+    evseUid: string,
+    fields: Partial<ActiveSessionState>,
+  ) => {
+    setActiveChargingSessions((prev) => {
+      if (!prev[evseUid]) return prev;
+      return {
+        ...prev,
+        [evseUid]: {
+          ...prev[evseUid],
+          ...fields,
+        },
+      };
+    });
+  };
+
+  // Update session telemetry and send PUT request to HUB
+  const updateSessionTelemetryAndSend = async (
+    evseUid: string,
+    fields: Partial<ActiveSessionState>,
+  ) => {
     const session = activeSessionsRef.current[evseUid];
     if (!session) return;
 
-    const stopTimeStr = new Date().toISOString();
+    const mergedSession = {
+      ...session,
+      ...fields,
+    };
 
-    // 1. PUT Session to CPO receiver (State: COMPLETED)
-    const finalSessionPayload = {
-      id: session.sessionId,
-      start_date_time: session.startTime,
-      end_date_time: stopTimeStr,
-      kwh: session.kwh,
-      location_id: session.locationId,
-      evse_uid: session.evseUid,
-      status: "COMPLETED",
+    const price = tariffPrice;
+    const computedCost = Math.round((20.0 + (mergedSession.kwh || 0.0) * price) * 10) / 10;
+    mergedSession.cost = computedCost;
+
+    setActiveChargingSessions((prev) => {
+      if (!prev[evseUid]) return prev;
+      return {
+        ...prev,
+        [evseUid]: mergedSession,
+      };
+    });
+
+    const sessionPayload = {
+      id: mergedSession.sessionId,
+      start_date_time: mergedSession.startTime,
+      kwh: mergedSession.kwh,
+      location_id: mergedSession.locationId,
+      evse_uid: mergedSession.evseUid,
+      status: mergedSession.status || "ACTIVE",
       total_cost: {
-        excl_vat: Number((session.cost * 0.95).toFixed(2)),
-        incl_vat: session.cost,
+        excl_vat: Number((computedCost * 0.95).toFixed(2)),
+        incl_vat: computedCost,
       },
-      last_updated: stopTimeStr,
+      charging_periods: [
+        {
+          start_date_time: mergedSession.startTime,
+          dimensions: [
+            { type: "STATE_OF_CHARGE", volume: mergedSession.soc },
+            { type: "POWER", volume: mergedSession.kw },
+            { type: "ENERGY", volume: mergedSession.kwh },
+            { type: "CURRENT", volume: mergedSession.current },
+            { type: "VOLTAGE", volume: mergedSession.voltage }
+          ]
+        }
+      ],
+      last_updated: new Date().toISOString(),
       ...sessionTemplateRef.current,
     };
 
-    const { countryCode, partyId } = getLocCpoInfo(session.locationId);
+    const { countryCode, partyId } = getLocCpoInfo(mergedSession.locationId);
+    
     await sendRequest(
-      `Complete Session [${session.sessionId}]`,
-      `/simulator/simulate/sessions/${countryCode}/${partyId}/${session.sessionId}`,
+      `Update Session [${mergedSession.sessionId}] (${mergedSession.status})`,
+      `/simulator/simulate/sessions/${countryCode}/${partyId}/${mergedSession.sessionId}`,
       "POST",
-      finalSessionPayload,
+      sessionPayload,
     );
 
-    // 2. PATCH EVSE status back to AVAILABLE
-    await handlePatchStatus(session.locationId, evseUid, "AVAILABLE");
+    if (mergedSession.status === "COMPLETED" || mergedSession.status === "INVALID") {
+      await handlePatchStatus(mergedSession.locationId, evseUid, "AVAILABLE");
 
-    // 3. Auto-generate CDR invoice
-    addLog(
-      "CPO_SIM",
-      "GENERATING_CDR",
-      `會話結束，自動生成 CDR 結算單 (單號: ${session.sessionId})`,
-      "info",
-    );
+      addLog(
+        "CPO_SIM",
+        "GENERATING_CDR",
+        `會話結束 (${mergedSession.status})，自動生成 CDR 結算單 (單號: ${mergedSession.sessionId})`,
+        "info",
+      );
 
-    const newCdr = {
-      id: `CDR-${Math.floor(100000 + Math.random() * 900000)}`,
-      start_date_time: session.startTime,
-      end_date_time: stopTimeStr,
-      kwh: session.kwh,
-      authorization_reference: session.sessionId,
-      total_cost: {
-        excl_vat: Number((session.cost * 0.95).toFixed(2)),
-        incl_vat: session.cost,
-      },
-      total_energy: session.kwh,
-      total_time: Math.floor(
-        (new Date(stopTimeStr).getTime() -
-          new Date(session.startTime).getTime()) /
-          1000,
-      ),
-      last_updated: stopTimeStr,
-      ctr_code: "TW",
-      party_id: "CPO",
-      settled: false,
-      transmission_status: "PENDING",
-      ...cdrTemplateRef.current,
-    };
+      const stopTimeStr = new Date().toISOString();
+      const newCdr = {
+        id: generateRandomCdrId(),
+        start_date_time: mergedSession.startTime,
+        end_date_time: stopTimeStr,
+        kwh: mergedSession.kwh,
+        authorization_reference: mergedSession.sessionId,
+        total_cost: {
+          excl_vat: Number((computedCost * 0.95).toFixed(2)),
+          incl_vat: computedCost,
+        },
+        total_energy: mergedSession.kwh,
+        total_time: Math.floor(
+          (new Date(stopTimeStr).getTime() -
+            new Date(mergedSession.startTime).getTime()) /
+            1000,
+        ),
+        last_updated: stopTimeStr,
+        ctr_code: countryCode,
+        party_id: partyId,
+        settled: false,
+        transmission_status: "PENDING",
+        ...cdrTemplateRef.current,
+      };
 
-    setCdrPayloadEdit(newCdr);
+      setCdrPayloadEdit(newCdr);
 
-    // Trigger local POST CDR invoice
-    await sendRequest(
-      `Post CDR Receipt`,
-      "/simulator/simulate/cdrs",
-      "POST",
-      newCdr,
-    );
+      const cdrRes = await sendRequest(
+        `Post CDR Receipt`,
+        "/simulator/simulate/cdrs",
+        "POST",
+        newCdr,
+      );
 
-    // Remove from local active interval
-    setActiveChargingSessions((prev) => {
-      const next = { ...prev };
-      delete next[evseUid];
-      return next;
-    });
+      if (cdrRes.success) {
+        await transmitCdr(newCdr.id);
+      }
 
-    addLog(
-      "CPO_SIM",
-      "SESSION_STOPPED",
-      `手動停止充電! Session ID: ${session.sessionId}，已生成結算單。`,
-      "info",
-    );
+      setActiveChargingSessions((prev) => {
+        const next = { ...prev };
+        delete next[evseUid];
+        return next;
+      });
+
+      addLog(
+        "CPO_SIM",
+        "SESSION_STOPPED",
+        `充電會話 [${mergedSession.sessionId}] 結束！狀態: ${mergedSession.status}，已自動發送結算單。`,
+        "info",
+      );
+    }
+  };
+
+  // Stop charging & Generate CDR
+  const stopSimulatedCharging = async (evseUid: string) => {
+    await updateSessionTelemetryAndSend(evseUid, { status: "COMPLETED" });
   };
 
   // Push CDR settlement invoice to matching EMSP via HUB
@@ -1160,20 +1248,11 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
 
       for (const uid of activeUids) {
         const session = activeChargingSessions[uid];
-        let powerKw = 120.0;
+        // If automatic simulation is disabled, skip auto increment
+        if (session.isAuto === false) continue;
+
+        const powerKw = session.kw !== undefined ? session.kw : 120.0;
         const maxSoc = 100.0;
-
-        const matchingEvse = locations
-          .flatMap((l) => l.evses)
-          .find((e) => e.uid === uid);
-
-        if (matchingEvse) {
-          const connectors =
-            matchingEvse.connectors || matchingEvse.rawJson?.connectors;
-          if (connectors?.[0]?.max_electric_power) {
-            powerKw = connectors[0].max_electric_power / 1000;
-          }
-        }
 
         // Add variance to power
         const powerVar =
@@ -1187,8 +1266,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           nextSoc = maxSoc;
         }
 
-        // Price calculation based on TAR-REGULAR (default 9.5 / Flat 20.0)
-        const nextCost = Math.round((20.0 + nextKwh * 9.5) * 10) / 10;
+        // Price calculation based on current tariffPrice
+        const nextCost = Math.round((20.0 + nextKwh * tariffPrice) * 10) / 10;
 
         // Auto Stop when charged to 100%
         if (nextSoc === 100 && session.soc < 100) {
@@ -1202,6 +1281,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        const currentVoltage = session.voltage || 400.0;
+        const currentAmp = Math.round(((powerVar * 1000) / currentVoltage) * 10) / 10;
+
         // Update local session tracking state
         setActiveChargingSessions((prev) => {
           if (!prev[uid]) return prev;
@@ -1212,6 +1294,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
               soc: Math.round(nextSoc * 10) / 10,
               kwh: nextKwh,
               cost: nextCost,
+              kw: powerVar,
+              current: currentAmp,
             },
           };
         });
@@ -1223,11 +1307,23 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           kwh: nextKwh,
           location_id: session.locationId,
           evse_uid: session.evseUid,
-          status: "ACTIVE",
+          status: session.status || "ACTIVE",
           total_cost: {
             excl_vat: Number((nextCost * 0.95).toFixed(2)),
             incl_vat: nextCost,
           },
+          charging_periods: [
+            {
+              start_date_time: session.startTime,
+              dimensions: [
+                { type: "STATE_OF_CHARGE", volume: Math.round(nextSoc * 10) / 10 },
+                { type: "POWER", volume: powerVar },
+                { type: "ENERGY", volume: nextKwh },
+                { type: "CURRENT", volume: currentAmp },
+                { type: "VOLTAGE", volume: currentVoltage }
+              ]
+            }
+          ],
           last_updated: new Date().toISOString(),
           ...sessionTemplateRef.current,
         };
@@ -1249,7 +1345,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           addLog(
             "HUB",
             "ROUTING_SESSION_UPDATE",
-            `PUT Session: ${session.sessionId} -> 轉傳給 [${matchedEmsp?.name || "eMSP"}] (${nextSoc}%, ${nextKwh} kWh, $${nextCost} TWD)`,
+            `PUT Session: ${session.sessionId} -> 轉傳給 [${matchedEmsp?.name || "eMSP"}] (${Math.round(nextSoc * 10) / 10}%, ${nextKwh} kWh, $${nextCost} TWD)`,
             "info",
           );
         }
@@ -1260,7 +1356,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
 
     return () => clearInterval(chargingTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChargingSessions, locations]);
+  }, [activeChargingSessions, locations, tariffPrice]);
 
   // Server-Sent Events (SSE) Synchronization listener
   useEffect(() => {
@@ -1361,6 +1457,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         setSessionTemplate,
         cdrTemplate,
         setCdrTemplate,
+        updateSessionTelemetryAndSend,
+        updateSessionTelemetryOnly,
+        tariffPrice,
 
         // Phase 2 states
         emsps,
