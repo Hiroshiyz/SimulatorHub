@@ -54,12 +54,19 @@ export default function CpoSimPage() {
     handleSyncCustomTariff,
     updateSessionTelemetryAndSend,
     updateSessionTelemetryOnly,
+    emsps,
   } = useSimulator();
 
   const [tariffInput, setTariffInput] = useState<number>(9.5);
   const [selectedMac, setSelectedMac] = useState<string>(
     autoCharges.length > 0 ? autoCharges[0].mac : "",
   );
+  
+  // RFID dynamic state variables
+  const [rfidTokenInput, setRfidTokenInput] = useState<string>("MANUAL-TOKEN-CPO");
+  const [selectedRfidEmspId, setSelectedRfidEmspId] = useState<string>("");
+
+  const defaultRfidEmspId = selectedRfidEmspId || (emsps.find((e) => e.active) || emsps[0])?.id || "";
 
   const matchedLocation = locations.find((l) => l.id === selectedLocationId);
   const matchedEvses = matchedLocation?.evses || [];
@@ -892,6 +899,31 @@ export default function CpoSimPage() {
               Authorization 發送給 HUB，HUB 再路由給 eMSP
               校驗，批准後才開始送電。
             </p>
+
+            <div style={{ marginTop: "16px" }} className="form-group">
+              <label>輸入模擬 RFID 卡號 (Token UID)</label>
+              <input
+                type="text"
+                value={rfidTokenInput}
+                onChange={(e) => setRfidTokenInput(e.target.value)}
+                placeholder="MANUAL-TOKEN-CPO"
+                style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}
+              />
+            </div>
+
+            <div style={{ marginTop: "16px" }} className="form-group">
+              <label>選擇對接 eMSP 服務商</label>
+              <select
+                value={defaultRfidEmspId}
+                onChange={(e) => setSelectedRfidEmspId(e.target.value)}
+              >
+                {emsps.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name} ({e.partyId})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <button
@@ -901,6 +933,11 @@ export default function CpoSimPage() {
                   selectedLocationId,
                   selectedEvseUid,
                   false,
+                  null,
+                  undefined,
+                  true,
+                  rfidTokenInput,
+                  defaultRfidEmspId
                 );
               }
             }}

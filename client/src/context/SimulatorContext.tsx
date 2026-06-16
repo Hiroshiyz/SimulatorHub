@@ -138,6 +138,9 @@ interface SimulatorContextType {
     isAutoCharge?: boolean,
     customMac?: string | null,
     customSessId?: string,
+    initialIsAuto?: boolean,
+    customTokenUid?: string | null,
+    customEmspId?: string | null,
   ) => Promise<void>;
   stopSimulatedCharging: (evseUid: string) => Promise<void>;
   updateSessionTelemetryAndSend: (
@@ -800,6 +803,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     isAutoCharge = false,
     customMac: string | null = null,
     customSessId?: string,
+    initialIsAuto = true,
+    customTokenUid: string | null = null,
+    customEmspId: string | null = null,
   ) => {
     // Check if EVSE is already charging
     const activeUids = Object.keys(activeSessionsRef.current);
@@ -813,15 +819,17 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    let tokenUid = "MANUAL-TOKEN-CPO";
-    let emspId = "EMSP-A";
+    const activeEmsp = emspsRef.current.find((e) => e.active) || emspsRef.current[0];
+    let emspId = customEmspId || (activeEmsp ? activeEmsp.id : "EMSP-A");
+    let tokenUid = customTokenUid || "MANUAL-TOKEN-CPO";
     let authMethod = "RFID_SWIPE";
 
     if (isAutoCharge && customMac) {
       const mapping = autoCharges.find((m) => m.mac === customMac);
       if (mapping) {
         tokenUid = mapping.tokenUid;
-        emspId = mapping.emspId;
+        const matchedDbEmsp = emspsRef.current.find((e) => e.partyId === mapping.emspId || e.id === mapping.emspId);
+        emspId = matchedDbEmsp ? matchedDbEmsp.id : emspId;
         authMethod = "AUTO_CHARGE";
         addLog(
           "CPO_SIM",
@@ -840,7 +848,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const matchedEmsp = emspsRef.current.find((e) => e.id === emspId);
+    const matchedEmsp = emspsRef.current.find(
+      (e) => e.id === emspId || e.id === "EMSP-A" || e.partyId === "SMB" || e.active
+    ) || emspsRef.current[0];
 
     // 1. Authorize lookup simulation
     addLog(
@@ -933,7 +943,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         voltage: initialVoltage,
         current: initialCurrent,
         status: "ACTIVE",
-        isAuto: true,
+        isAuto: initialIsAuto,
       };
 
       setActiveChargingSessions((prev) => ({
@@ -1115,8 +1125,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     if (!payload) return;
 
     const matchedEmsp = emsps.find(
-      (e) => e.id === payload.emsp_id || e.id === "EMSP-A",
-    );
+      (e) => e.id === payload.emsp_id || e.id === "EMSP-A" || e.partyId === "SMB" || e.active
+    ) || emsps[0];
     addLog(
       "HUB",
       "ROUTING_CDR",
@@ -1171,7 +1181,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       "info",
     );
 
-    const matchedEmsp = emsps.find((e) => e.id === sessionPayloadEdit.emsp_id);
+    const matchedEmsp = emsps.find(
+      (e) => e.id === sessionPayloadEdit.emsp_id || e.id === "EMSP-A" || e.partyId === "SMB" || e.active
+    ) || emsps[0];
     if (matchedEmsp && matchedEmsp.active) {
       const { countryCode, partyId } = getLocCpoInfo(sessionPayloadEdit.location_id || "");
       await sendRequest(
