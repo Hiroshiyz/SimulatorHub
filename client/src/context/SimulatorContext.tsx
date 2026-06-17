@@ -152,7 +152,7 @@ interface SimulatorContextType {
     fields: Partial<ActiveSessionState>,
   ) => void;
   tariffPrice: number;
-  transmitCdr: (cdrId: string) => Promise<void>;
+  transmitCdr: (cdrId: string, customCdr?: OcpiCdr) => Promise<void>;
   triggerManualSessionSend: () => Promise<void>;
   triggerManualCdrSend: () => Promise<void>;
   handleAddAutoCharge: (e: React.FormEvent) => void;
@@ -998,8 +998,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       ...fields,
     };
 
-    const price = tariffPrice;
-    const computedCost = Math.round(20.0 + (mergedSession.kwh || 0.0) * price);
+    const price = typeof tariffPrice === "number" && !isNaN(tariffPrice) ? tariffPrice : 9.5;
+    const kwhValue = typeof mergedSession.kwh === "number" && !isNaN(mergedSession.kwh) ? mergedSession.kwh : 0.0;
+    const computedCost = Math.round(20.0 + kwhValue * price);
     mergedSession.cost = computedCost;
 
     setActiveChargingSessions((prev) => {
@@ -1091,7 +1092,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       );
 
       if (cdrRes.success) {
-        await transmitCdr(newCdr.id);
+        await transmitCdr(newCdr.id, newCdr);
       }
 
       setActiveChargingSessions((prev) => {
@@ -1115,12 +1116,12 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
   };
 
   // Push CDR settlement invoice to matching EMSP via HUB
-  const transmitCdr = async (cdrId: string) => {
+  const transmitCdr = async (cdrId: string, customCdr?: OcpiCdr) => {
     // Find the record
     const matchedCdr = cdrs.find((c) => c.id === cdrId);
-    const payload = matchedCdr
+    const payload = customCdr || (matchedCdr
       ? (matchedCdr.rawJson as unknown as OcpiCdr)
-      : cdrPayloadEdit;
+      : cdrPayloadEdit);
 
     if (!payload) return;
 
@@ -1216,7 +1217,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       `手動發送自訂 CDR [${cdrPayloadEdit.id}] 給 HUB`,
       "info",
     );
-    await transmitCdr(cdrPayloadEdit.id);
+    await transmitCdr(cdrPayloadEdit.id, cdrPayloadEdit);
   };
 
   // AutoCharge registration
@@ -1289,7 +1290,15 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
             `充電樁 ${uid} 已充滿 100%`,
             "success",
           );
-          setTimeout(() => stopSimulatedCharging(uid), 500);
+          const finalSessionState = {
+            soc: 100.0,
+            kwh: nextKwh,
+            cost: nextCost,
+            kw: 0,
+            current: 0,
+            status: "COMPLETED" as const,
+          };
+          setTimeout(() => updateSessionTelemetryAndSend(uid, finalSessionState), 500);
           return;
         }
 
