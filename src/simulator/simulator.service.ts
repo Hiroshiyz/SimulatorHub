@@ -11,6 +11,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { OcpiService } from "../ocpi/ocpi.service";
 import { Observable } from "rxjs";
 import { map } from "rxjs/operators";
+import { EmspService } from "../emsp/emsp.service";
 
 @Injectable()
 export class SimulatorService implements OnModuleInit {
@@ -19,6 +20,7 @@ export class SimulatorService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ocpiService: OcpiService,
+    private readonly emspService: EmspService,
   ) {}
 
   // Helper to dynamically get headers & base URL for a given CPO party
@@ -240,42 +242,13 @@ export class SimulatorService implements OnModuleInit {
         partyId: "SMB",
         name: "SMARTHUBLCU",
         url: "http://localhost:3030/simulator/mock-emsp/EVA",
+        tokenC: "mock_smb_token_c_123",
       },
     ];
 
     for (const emsp of defaultEmsps) {
       try {
-        const party = await this.prisma.party.upsert({
-          where: {
-            countryCode_partyId_role: {
-              countryCode: emsp.countryCode,
-              partyId: emsp.partyId,
-              role: "EMSP",
-            },
-          },
-          update: {
-            name: emsp.name,
-          },
-          create: {
-            countryCode: emsp.countryCode,
-            partyId: emsp.partyId,
-            role: "EMSP",
-            name: emsp.name,
-          },
-        });
-
-        await this.prisma.credential.upsert({
-          where: { partyId: party.id },
-          update: {
-            url: emsp.url,
-          },
-          create: {
-            partyId: party.id,
-            url: emsp.url,
-            tokenB: `mock_${emsp.partyId.toLowerCase()}_token_b_123`,
-            tokenC: `mock_${emsp.partyId.toLowerCase()}_token_c_123`,
-          },
-        });
+        await this.emspService.registerEmsp(emsp);
       } catch (err: any) {
         this.logger.error(
           `Failed to upsert default EMSP ${emsp.partyId}: ${err.message}`,
@@ -285,57 +258,11 @@ export class SimulatorService implements OnModuleInit {
   }
 
   async getEmspStatus() {
-    const emsps = await this.prisma.party.findMany({
-      where: { role: "EMSP" },
-      include: { credential: true },
-    });
+    return this.emspService.getEmspStatus();
+  }
 
-    const results = [];
-    for (const emsp of emsps) {
-      let isOnline = false;
-      let latency = 0;
-      let error = null;
-      const url = emsp.credential?.url;
-
-      if (url) {
-        const startTime = Date.now();
-        try {
-          const checkUrl = url.includes("mock-emsp")
-            ? `${url}/health`
-            : `${url}/ocpi/2.2.1/versions`;
-          await axios.get(checkUrl, {
-            timeout: 1500,
-            validateStatus: () => true,
-          });
-          isOnline = true;
-          latency = Date.now() - startTime;
-        } catch (err: any) {
-          try {
-            await axios.get(url, { timeout: 1500, validateStatus: () => true });
-            isOnline = true;
-            latency = Date.now() - startTime;
-          } catch (err2: any) {
-            error = err2.message;
-            this.logger.warn(
-              `EMSP ${emsp.partyId} health check failed: ${error} (${url})`,
-            );
-          }
-        }
-      }
-
-      results.push({
-        id: emsp.id,
-        countryCode: emsp.countryCode,
-        partyId: emsp.partyId,
-        name: emsp.name || `${emsp.countryCode}-${emsp.partyId}`,
-        url: url || null,
-        online: isOnline,
-        latency,
-        error,
-      });
-    }
-
-    return results;
+  async syncLocationsToSpecificEmsp(countryCode: string, partyId: string) {
+    return this.emspService.syncLocationsToEmsp(countryCode, partyId);
   }
 
   async registerCpo(data: {
@@ -391,46 +318,7 @@ export class SimulatorService implements OnModuleInit {
     url: string;
     tokenC: string;
   }) {
-    this.logger.log(
-      `Registering EMSP tenant: ${data.countryCode}/${data.partyId}`,
-    );
-    const party = await this.prisma.party.upsert({
-      where: {
-        countryCode_partyId_role: {
-          countryCode: data.countryCode.toUpperCase(),
-          partyId: data.partyId.toUpperCase(),
-          role: "EMSP",
-        },
-      },
-      update: {
-        name: data.name,
-      },
-      create: {
-        countryCode: data.countryCode.toUpperCase(),
-        partyId: data.partyId.toUpperCase(),
-        role: "EMSP",
-        name: data.name,
-        rateLimit: 100,
-        rateLimitWindow: 60,
-      },
-    });
-
-    await this.prisma.credential.upsert({
-      where: { partyId: party.id },
-      update: {
-        url: data.url,
-        tokenC: data.tokenC,
-        tokenB: data.tokenC,
-      },
-      create: {
-        partyId: party.id,
-        url: data.url,
-        tokenB: data.tokenC,
-        tokenC: data.tokenC,
-      },
-    });
-
-    return party;
+    return this.emspService.registerEmsp(data);
   }
 
   async saveEmspSession(emspPartyId: string, sessionId: string, payload: any) {

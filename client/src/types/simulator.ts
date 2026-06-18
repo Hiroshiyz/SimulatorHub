@@ -73,6 +73,7 @@ export interface EmspChannel {
   url?: string;
   online?: boolean;
   latency?: number;
+  tokenC?: string;
 }
 
 export interface DbSession {

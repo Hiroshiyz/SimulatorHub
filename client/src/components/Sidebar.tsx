@@ -1,5 +1,5 @@
 import { useSimulator } from "../context/SimulatorContext";
-import { Zap, Cpu, Layers, FileText } from "./Icons";
+import { Zap, Cpu, Layers } from "./Icons";
 
 export default function Sidebar() {
   const {
@@ -83,18 +83,6 @@ export default function Sidebar() {
             AutoCharge
           </a>
         </li> */}
-        <li>
-          <a
-            className={`nav-item ${activeTab === "ocpi-payload" ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab("ocpi-payload");
-              setSidebarOpen(false);
-            }}
-          >
-            <FileText size={18} />
-            OCPI 模組/參數
-          </a>
-        </li>
       </ul>
 
       <div className="sidebar-footer">

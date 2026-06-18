@@ -156,6 +156,15 @@ export class SimulatorController {
     return this.simulatorService.syncAllLocations();
   }
 
+  // sync to specific EMSP
+  @Post("locations/sync-specific/:countryCode/:partyId")
+  async syncSpecificLocations(
+    @Param("countryCode") countryCode: string,
+    @Param("partyId") partyId: string,
+  ) {
+    return this.simulatorService.syncLocationsToSpecificEmsp(countryCode, partyId);
+  }
+
   // health check
   @Get("health")
   healthCheck() {

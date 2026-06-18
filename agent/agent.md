@@ -18,6 +18,7 @@ The Orchestrator dispatches traffic to specific downstream Agents based on the O
 | EVSE Status, Locations, Connectors | `TopologyAgent`    | Manages information about charging stations, charge points, and real-time status.           |
 | Remote Start/Stop, Reservation     | `CommandsAgent`    | Triggers active command execution on remote chargers.                                       |
 | Tariffs, Charging Sessions, CDRs   | `BillingAgent`     | Responsible for cost calculation rules, active session tracking, and Charge Detail Records. |
+| Simulation events, registrations   | `SimulatorAgent`   | Handles mock configurations, manual syncs, and telemetry events (locations, sessions, CDRs).|
 
 ---
 

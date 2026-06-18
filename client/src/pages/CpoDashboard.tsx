@@ -9,7 +9,6 @@ import Dashboard from "./Dashboard";
 import CpoSimPage from "./CpoSimPage";
 import HubRouterPage from "./HubRouterPage";
 // import AutoChargePage from "./AutoChargePage";
-import PayloadPage from "./PayloadPage";
 
 export default function CpoDashboard() {
   const { activeTab } = useSimulator();
@@ -33,7 +32,6 @@ export default function CpoDashboard() {
           {activeTab === "cpo-sim" && <CpoSimPage />}
           {activeTab === "hub-router" && <HubRouterPage />}
           {/* {activeTab === "autocharge" && <AutoChargePage />} */}
-          {activeTab === "ocpi-payload" && <PayloadPage />}
         </div>
       </main>
 

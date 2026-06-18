@@ -1,6 +1,5 @@
 import { useSimulator } from "../context/SimulatorContext";
-import { Layers, RefreshCw, Plus } from "../components/Icons";
-import { useState } from "react";
+import { Layers, RefreshCw } from "../components/Icons";
 
 export default function HubRouterPage() {
   const {
@@ -8,61 +7,9 @@ export default function HubRouterPage() {
     setEmsps,
     fetchEmspStatus,
     addLog,
-    handleAddCpo,
-    handleAddEmsp,
     handleSyncAllLocations,
     cpos,
   } = useSimulator();
-
-  // 新增租戶表單狀態
-  const [tenantType, setTenantType] = useState<"CPO" | "EMSP">("CPO");
-  const [newCountryCode, setNewCountryCode] = useState<string>("TW");
-  const [newPartyId, setNewPartyId] = useState<string>("");
-  const [newName, setNewName] = useState<string>("");
-  const [newTokenVal, setNewTokenVal] = useState<string>("");
-  const [newUrl, setNewUrl] = useState<string>("");
-
-  const handleRegisterTenant = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCountryCode || !newPartyId || !newName || !newTokenVal) {
-      alert("請填寫所有必要欄位！");
-      return;
-    }
-
-    if (tenantType === "CPO") {
-      const res = await handleAddCpo(
-        newCountryCode,
-        newPartyId,
-        newName,
-        newTokenVal,
-      );
-      if (res.success) {
-        alert(`CPO ${newPartyId} 註冊成功！`);
-        setNewPartyId("");
-        setNewName("");
-        setNewTokenVal("");
-      } else {
-        alert(`CPO 註冊失敗: ${res.error}`);
-      }
-    } else {
-      const res = await handleAddEmsp(
-        newCountryCode,
-        newPartyId,
-        newName,
-        newUrl,
-        newTokenVal,
-      );
-      if (res.success) {
-        alert(`EMSP ${newPartyId} 註冊成功！`);
-        setNewPartyId("");
-        setNewName("");
-        setNewTokenVal("");
-        setNewUrl("");
-      } else {
-        alert(`EMSP 註冊失敗: ${res.error}`);
-      }
-    }
-  };
 
   const toggleEmspChannel = (emspId: string) => {
     setEmsps((prev) =>
@@ -86,14 +33,24 @@ export default function HubRouterPage() {
     <div className="workspace">
       {/* Topology Header */}
       <div className="card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <h3 className="card-title" style={{ margin: 0 }}>
             <Layers size={18} style={{ color: "var(--accent-red)" }} />
             <span>CPO List</span>
           </h3>
           <button
             onClick={async () => {
-              if (confirm("是否要將資料庫中現有的所有 CPO 場站資訊，補發/同步至所有已啟用的 EMSP 接收端？")) {
+              if (
+                confirm(
+                  "是否要將資料庫中現有的所有 CPO 場站資訊，補發/同步至所有已啟用的 EMSP 接收端？",
+                )
+              ) {
                 const res = await handleSyncAllLocations();
                 if (res.success) {
                   alert(`成功補發同步 ${res.count} 筆場站資訊！`);
@@ -224,165 +181,6 @@ export default function HubRouterPage() {
             ))}
           </div>
         </div>
-      </div>
-
-      {/* Dynamic Tenant Onboarding Panel */}
-      <div className="card">
-        <h3 className="card-title">
-          <Plus size={18} style={{ color: "var(--accent-red)" }} />
-          <span>動態註冊 CPO / EMSP 漫遊廠商 (Onboard Tenant)</span>
-        </h3>
-        <p
-          style={{
-            fontSize: "12px",
-            color: "var(--text-muted)",
-            marginTop: "4px",
-          }}
-        >
-          在這裡可以直接向 HUB 動態建立新的廠商設定與 OCPI
-          憑證關係，免重置資料庫，即刻生效。
-        </p>
-
-        {/* Selector Tabs */}
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            marginTop: "16px",
-            borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
-            paddingBottom: "12px",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setTenantType("CPO")}
-            className={`button ${tenantType === "CPO" ? "" : "button-secondary"}`}
-            style={{ padding: "4px 16px", height: "30px", fontSize: "12px" }}
-          >
-            註冊新 CPO
-          </button>
-          <button
-            type="button"
-            onClick={() => setTenantType("EMSP")}
-            className={`button ${tenantType === "EMSP" ? "" : "button-secondary"}`}
-            style={{ padding: "4px 16px", height: "30px", fontSize: "12px" }}
-          >
-            註冊新 EMSP
-          </button>
-        </div>
-
-        <form
-          onSubmit={handleRegisterTenant}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "16px",
-            marginTop: "16px",
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: "16px",
-            }}
-          >
-            <div className="form-group">
-              <label>國家代碼 (Country Code)</label>
-              <input
-                type="text"
-                required
-                placeholder="TW"
-                value={newCountryCode}
-                onChange={(e) =>
-                  setNewCountryCode(e.target.value.toUpperCase())
-                }
-                style={{ fontFamily: "var(--font-mono)", fontSize: "13px" }}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>企業代碼 (Party ID)</label>
-              <input
-                type="text"
-                required
-                placeholder={tenantType === "CPO" ? "CPO" : "EMSP"}
-                value={newPartyId}
-                onChange={(e) => setNewPartyId(e.target.value.toUpperCase())}
-                style={{ fontFamily: "var(--font-mono)", fontSize: "13px" }}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>廠商名稱 (Tenant Name)</label>
-              <input
-                type="text"
-                required
-                placeholder={
-                  tenantType === "CPO" ? "SMARTHUB" : "SMARTHUB EMSP"
-                }
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                style={{ fontSize: "13px" }}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>
-                {tenantType === "CPO"
-                  ? "對接憑證 (Token B)"
-                  : "目標接收端金鑰 (Token C)"}
-              </label>
-              <input
-                type="text"
-                required
-                placeholder={
-                  tenantType === "CPO"
-                    ? "mock_cpo_token_b_123"
-                    : "mock_emsp_token_c_123"
-                }
-                value={newTokenVal}
-                onChange={(e) => setNewTokenVal(e.target.value)}
-                style={{ fontFamily: "var(--font-mono)", fontSize: "13px" }}
-              />
-            </div>
-          </div>
-
-          {tenantType === "EMSP" && (
-            <div className="form-group">
-              <label>EMSP 伺服器網址 (Receiver Base URL)</label>
-              <input
-                type="url"
-                required
-                placeholder="http://localhost:5053"
-                value={newUrl}
-                onChange={(e) => setNewUrl(e.target.value)}
-                style={{ fontFamily: "var(--font-mono)", fontSize: "13px" }}
-              />
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="button"
-            style={{
-              alignSelf: "flex-end",
-              background:
-                tenantType === "CPO"
-                  ? "linear-gradient(135deg, var(--accent-blue), #1d4ed8)"
-                  : "linear-gradient(135deg, var(--accent-green), #047857)",
-              boxShadow:
-                tenantType === "CPO"
-                  ? "0 4px 15px rgba(59, 130, 246, 0.25)"
-                  : "0 4px 15px rgba(16, 185, 129, 0.25)",
-              padding: "0 24px",
-              height: "38px",
-              fontSize: "12px",
-            }}
-          >
-            <span>註冊 {tenantType} 廠商關係</span>
-          </button>
-        </form>
       </div>
 
       {/* Endpoint toggler controls */}

@@ -30,6 +30,9 @@
 * **[BillingAgent (BillingAgent.md)](file:///home/theodore/project/mock-hub/agent/BillingAgent.md) (計費與交易代理)**：
   * 管理費率計算模板（Tariffs）、追蹤即時充電計量進程（Sessions）。
   * 處理充電結束後所開立的結帳帳單明細（CDRs）。
+* **[SimulatorAgent (SimulatorAgent.md)](file:///home/theodore/project/mock-hub/agent/SimulatorAgent.md) (模擬器代理)**：
+  * 管理虛擬的 CPO 與 EMSP 註冊配置、批次手動同步站點資料。
+  * 模擬底層充電站的各類遙測事件（站點更新、槍頭狀態變換、充電計量更新、生成計費單據 CDRs）。
 
 ---
 

@@ -22,10 +22,9 @@ interface SimulatorContextType {
     | "dashboard"
     | "cpo-sim"
     | "hub-router"
-    | "autocharge"
-    | "ocpi-payload";
+    | "autocharge";
   setActiveTab: (
-    tab: "dashboard" | "cpo-sim" | "hub-router" | "autocharge" | "ocpi-payload",
+    tab: "dashboard" | "cpo-sim" | "hub-router" | "autocharge",
   ) => void;
   isOnline: boolean;
   serverVersion: string;
@@ -126,6 +125,15 @@ interface SimulatorContextType {
     tokenC: string,
   ) => Promise<{ success: boolean; error?: string }>;
   handleSyncAllLocations: () => Promise<{ success: boolean; count: number }>;
+  handleSyncLocationsToSpecificEmsp: (
+    countryCode: string,
+    partyId: string,
+  ) => Promise<{ success: boolean; count?: number; error?: string }>;
+  handleSendEmspCommand: (
+    emspToken: string,
+    command: "START_SESSION" | "STOP_SESSION",
+    payload: unknown,
+  ) => Promise<{ success: boolean; data?: unknown; error?: string }>;
   initializeMockStations: () => Promise<void>;
   handlePatchStatus: (
     locationId: string,
@@ -186,7 +194,7 @@ function generateRandomCdrId() {
 
 export function SimulatorProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cpo-sim" | "hub-router" | "autocharge" | "ocpi-payload"
+    "dashboard" | "cpo-sim" | "hub-router" | "autocharge"
   >("dashboard");
   const [isOnline, setIsOnline] = useState<boolean>(false);
   const [serverVersion, setServerVersion] = useState<string>("Unknown");
@@ -776,6 +784,74 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     );
     const dataObj = res.data as { count?: number } | undefined;
     return { success: res.success, count: dataObj?.count || 0 };
+  };
+
+  const handleSyncLocationsToSpecificEmsp = async (
+    countryCode: string,
+    partyId: string,
+  ) => {
+    addLog(
+      "SYSTEM",
+      "SYNC_SPECIFIC_EMSP",
+      `手動同步所有場站資訊至特定 EMSP: ${countryCode}-${partyId}`,
+      "info",
+    );
+    const res = await sendRequest(
+      `Sync to ${countryCode}-${partyId}`,
+      `/simulator/locations/sync-specific/${countryCode}/${partyId}`,
+      "POST",
+      undefined,
+      true,
+    );
+    const dataObj = res.data as { count?: number } | undefined;
+    return { success: res.success, count: dataObj?.count || 0 };
+  };
+
+  const handleSendEmspCommand = async (
+    emspToken: string,
+    command: "START_SESSION" | "STOP_SESSION",
+    payload: unknown,
+  ) => {
+    addLog(
+      "eMSP",
+      `SEND_${command}`,
+      `發送命令 ${command} 呼叫 HUB (以 Token ${emspToken ? emspToken.substring(0, 8) : ""}...)`,
+      "info",
+      payload,
+    );
+    try {
+      triggerFlowAnimation(true);
+      const res = await fetch(`/ocpi/2.2.1/commands/${command}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Token ${emspToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      
+      addLog(
+        "HUB",
+        `${command}_RESPONSE`,
+        `收到 HUB 對命令 ${command} 的回傳結果: ${data?.status_message || "N/A"}`,
+        res.ok ? "success" : "error",
+        undefined,
+        data,
+      );
+
+      await fetchDatabaseState();
+      return { success: res.ok, data };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      addLog(
+        "SYSTEM",
+        `${command}_FAILED`,
+        `發送命令 ${command} 失敗: ${errorMsg}`,
+        "error",
+      );
+      return { success: false, error: errorMsg };
+    }
   };
 
   const handlePatchStatus = async (
@@ -1518,6 +1594,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         handleAddCpo,
         handleAddEmsp,
         handleSyncAllLocations,
+        handleSyncLocationsToSpecificEmsp,
+        handleSendEmspCommand,
         initializeMockStations,
         handlePatchStatus,
         startSimulatedCharging,

@@ -14,6 +14,7 @@
 * **[app.module.ts](file:///home/theodore/project/mock-hub/src/app.module.ts)**：專案的根模組。在此整合並配置全域攔截器、限流守衛、資料庫模組、快取服務，以及各業務模組。
 * **[common/](file:///home/theodore/project/mock-hub/src/common)**：存放跨模組共用的基礎設施與工具，例如限流守衛、身分驗證守衛與日誌追蹤攔截器。
 * **[ocpi/](file:///home/theodore/project/mock-hub/src/ocpi)**：標準 OCPI 2.2.1 外交窗口。定義符合規範的標準 API，接收並分流外部 CPO 與 EMSP 的連線業務。
+* **[emsp/](file:///home/theodore/project/mock-hub/src/emsp)**：移動出行運營商（eMSP）管理服務。負責管理已註冊的 eMSP 漫遊租戶、連線狀態健康檢查、手動場站同步分發，以及指令轉發。
 * **[prisma/](file:///home/theodore/project/mock-hub/src/prisma)**：資料庫持久化服務。整合 Prisma ORM 連接 PostgreSQL，配置高併發的動態連線池。
 * **[redis/](file:///home/theodore/project/mock-hub/src/redis)**：快取與狀態儲存服務。連接 Redis 伺服器提供高速暫存以及滑動時間窗口計數限流。
 * **[simulator/](file:///home/theodore/project/mock-hub/src/simulator)**：虛擬充電樁事件模擬器。提供模擬 API 觸發充電樁狀態變更、充電交易進程，並生成 CDR 計費明細以供整合測試。
@@ -31,6 +32,7 @@ To maintain high modularity and clear architectural boundaries, the folders are 
 * **[main.ts](file:///home/theodore/project/mock-hub/src/main.ts)**: The entry-point file of the application. Boots up the NestJS runtime, enables CORS, registers static assets path (`public/`), and starts the HTTP listener on port `3030`.
 * **[app.module.ts](file:///home/theodore/project/mock-hub/src/app.module.ts)**: The root application module. Integrates and configures global interceptors, rate-limiting guards, database Prisma modules, Redis services, and all business modules.
 * **[common/](file:///home/theodore/project/mock-hub/src/common)**: Houses cross-module infrastructure utilities shared across the app, such as rate limit guards, API key validators, and request logs interceptors.
+* **[emsp/](file:///home/theodore/project/mock-hub/src/emsp)**: Mobility Service Provider (eMSP) management layer. Handles registered eMSP tenant registration, real-time health checks, manual locations synchronization, and remote commands forwarding.
 * **[ocpi/](file:///home/theodore/project/mock-hub/src/ocpi)**: Standard OCPI 2.2.1 diplomatic interface. Exposes specifications-compliant endpoints, receiving and routing webhook connections from CPO and EMSP client nodes.
 * **[prisma/](file:///home/theodore/project/mock-hub/src/prisma)**: Database persistence layer. Integrates Prisma ORM with PostgreSQL and manages a high-concurrency connection pool.
 * **[redis/](file:///home/theodore/project/mock-hub/src/redis)**: Cache and runtime state storage. Connects to Redis to offer fast temporary storage and sliding window rate limit checks.

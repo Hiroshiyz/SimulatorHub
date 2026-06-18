@@ -28,7 +28,6 @@ export default function TopBar() {
           {activeTab === "cpo-sim" && "CPO 模擬充電站控制面板"}
           {activeTab === "hub-router" && "HUB 智能路由與轉送通道"}
           {activeTab === "autocharge" && "AutoCharge 雲端車輛映射庫"}
-          {activeTab === "ocpi-payload" && "OCPI 自定義參數/結算單調試"}
         </div>
       </div>
 
