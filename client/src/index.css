@@ -265,6 +265,8 @@ input, select, textarea {
   color: white;
   font-family: inherit;
   font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 input:focus, select:focus, textarea:focus {
@@ -864,5 +866,90 @@ textarea {
   font-weight: 600;
   height: 34px;
   border-radius: 6px;
+}
+
+/* Custom Toast Notifications */
+.toast-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 9999;
+  max-width: 380px;
+  width: calc(100% - 48px);
+}
+
+.toast-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 16px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  animation: toast-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  position: relative;
+}
+
+@keyframes toast-enter {
+  from {
+    transform: translateY(-20px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.toast-item.success {
+  border-left: 4px solid var(--accent-green);
+  background: rgba(16, 185, 129, 0.08);
+  box-shadow: 0 10px 30px rgba(16, 185, 129, 0.05);
+}
+
+.toast-item.error {
+  border-left: 4px solid var(--accent-red);
+  background: rgba(239, 68, 68, 0.08);
+  box-shadow: 0 10px 30px rgba(239, 68, 68, 0.05);
+}
+
+.toast-item.warning {
+  border-left: 4px solid var(--accent-yellow);
+  background: rgba(245, 158, 11, 0.08);
+  box-shadow: 0 10px 30px rgba(245, 158, 11, 0.05);
+}
+
+.toast-item.info {
+  border-left: 4px solid var(--accent-blue);
+  background: rgba(56, 189, 248, 0.08);
+  box-shadow: 0 10px 30px rgba(56, 189, 248, 0.05);
+}
+
+.toast-content {
+  flex-grow: 1;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.toast-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  line-height: 1;
+  font-size: 16px;
+  margin-top: -2px;
+}
+
+.toast-close-btn:hover {
+  color: white;
 }
 

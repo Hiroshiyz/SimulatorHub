@@ -41,8 +41,28 @@ export class SimulatorService implements OnModuleInit {
         },
       });
 
-      if (party && party.credential && party.credential.tokenB) {
-        tokenB = party.credential.tokenB;
+      if (party) {
+        if (party.credential && party.credential.tokenB) {
+          tokenB = party.credential.tokenB;
+        } else {
+          const generatedTokenB = `mock_${partyId.toLowerCase()}_token_b_123`;
+          const generatedTokenC = `mock_${partyId.toLowerCase()}_token_c_123`;
+          this.logger.warn(
+            `Party ${countryCode}/${partyId} has no credentials. Auto-generating default credentials...`,
+          );
+          try {
+            await this.prisma.credential.create({
+              data: {
+                partyId: party.id,
+                tokenB: generatedTokenB,
+                tokenC: generatedTokenC,
+              },
+            });
+            tokenB = generatedTokenB;
+          } catch (createErr: any) {
+            this.logger.error(`Failed to auto-generate credential: ${createErr.message}`);
+          }
+        }
       }
     } catch (err) {
       this.logger.error(
@@ -322,12 +342,31 @@ export class SimulatorService implements OnModuleInit {
   }
 
   async saveEmspSession(emspPartyId: string, sessionId: string, payload: any) {
-    const party = await this.prisma.party.findFirst({
+    let party = await this.prisma.party.findFirst({
       where: {
         partyId: emspPartyId.toUpperCase(),
         role: "EMSP",
       },
     });
+
+    if (!party) {
+      const credentials = await this.prisma.credential.findMany({
+        where: {
+          url: {
+            contains: `/mock-emsp/${emspPartyId}`,
+            mode: "insensitive",
+          },
+        },
+        include: {
+          party: true,
+        },
+      });
+      const matchedCred = credentials.find((c) => c.party.role === "EMSP");
+      if (matchedCred) {
+        party = matchedCred.party;
+      }
+    }
+
     if (!party) {
       this.logger.warn(`EMSP party not found: ${emspPartyId}`);
       return;
@@ -362,12 +401,31 @@ export class SimulatorService implements OnModuleInit {
     const cdrId = payload.id;
     if (!cdrId) return;
 
-    const party = await this.prisma.party.findFirst({
+    let party = await this.prisma.party.findFirst({
       where: {
         partyId: emspPartyId.toUpperCase(),
         role: "EMSP",
       },
     });
+
+    if (!party) {
+      const credentials = await this.prisma.credential.findMany({
+        where: {
+          url: {
+            contains: `/mock-emsp/${emspPartyId}`,
+            mode: "insensitive",
+          },
+        },
+        include: {
+          party: true,
+        },
+      });
+      const matchedCred = credentials.find((c) => c.party.role === "EMSP");
+      if (matchedCred) {
+        party = matchedCred.party;
+      }
+    }
+
     if (!party) {
       this.logger.warn(`EMSP party not found: ${emspPartyId}`);
       return;

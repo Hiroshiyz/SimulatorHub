@@ -118,6 +118,7 @@ export interface ActiveSessionState {
   voltage?: number;
   status?: "ACTIVE" | "COMPLETED" | "INVALID";
   isAuto?: boolean;
+  emspId?: string;
 }
 
 export interface SessionTemplate {
@@ -194,6 +195,12 @@ export interface CpoTenant {
     tokenC: string | null;
     url: string | null;
   } | null;
+}
+
+export interface ToastMessage {
+  id: string;
+  message: string;
+  type: "success" | "error" | "info" | "warning";
 }
 
 

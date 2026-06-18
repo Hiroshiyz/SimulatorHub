@@ -15,16 +15,18 @@ import type {
   OcpiCdr,
   OcpiTotalCost,
   CpoTenant,
+  ToastMessage,
 } from "../types/simulator";
 
 interface SimulatorContextType {
   activeTab:
     | "dashboard"
     | "cpo-sim"
+    | "emsp-sim"
     | "hub-router"
     | "autocharge";
   setActiveTab: (
-    tab: "dashboard" | "cpo-sim" | "hub-router" | "autocharge",
+    tab: "dashboard" | "cpo-sim" | "emsp-sim" | "hub-router" | "autocharge",
   ) => void;
   isOnline: boolean;
   serverVersion: string;
@@ -78,6 +80,9 @@ interface SimulatorContextType {
   setNewToken: (val: string) => void;
   newEmsp: string;
   setNewEmsp: (val: string) => void;
+  toasts: ToastMessage[];
+  showToast: (message: string, type?: "success" | "error" | "info" | "warning") => void;
+  removeToast: (id: string) => void;
 
   fetchDatabaseState: () => Promise<void>;
   fetchEmspStatus: () => Promise<void>;
@@ -194,8 +199,22 @@ function generateRandomCdrId() {
 
 export function SimulatorProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cpo-sim" | "hub-router" | "autocharge"
+    "dashboard" | "cpo-sim" | "emsp-sim" | "hub-router" | "autocharge"
   >("dashboard");
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "info") => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
   const [isOnline, setIsOnline] = useState<boolean>(false);
   const [serverVersion, setServerVersion] = useState<string>("Unknown");
   const [logs, setLogs] = useState<LogEntry[]>([
@@ -401,6 +420,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           url: string;
           online: boolean;
           latency: number;
+          tokenC?: string;
         }>;
         setEmsps((prev) => {
           return emspData.map((backendEmsp) => {
@@ -420,6 +440,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
               online: backendEmsp.online,
               latency: backendEmsp.latency,
               active: existing ? existing.active : true,
+              tokenC: backendEmsp.tokenC,
             };
           });
         });
@@ -1020,6 +1041,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         current: initialCurrent,
         status: "ACTIVE",
         isAuto: initialIsAuto,
+        emspId,
       };
 
       setActiveChargingSessions((prev) => ({
@@ -1111,6 +1133,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         }
       ],
       last_updated: new Date().toISOString(),
+      emsp_id: mergedSession.emspId,
       ...sessionTemplateRef.current,
     };
 
@@ -1155,6 +1178,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         party_id: partyId,
         settled: false,
         transmission_status: "PENDING",
+        emsp_id: mergedSession.emspId,
         ...cdrTemplateRef.current,
       };
 
@@ -1605,6 +1629,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         triggerManualCdrSend,
         handleAddAutoCharge,
         terminalBodyRef,
+        toasts,
+        showToast,
+        removeToast,
       }}
     >
       {children}

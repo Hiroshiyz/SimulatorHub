@@ -5,8 +5,6 @@ import {
   Flame,
   Zap,
   Database,
-  CheckCircle,
-  AlertTriangle,
 } from "../components/Icons";
 import { useState, useEffect } from "react";
 
@@ -51,9 +49,7 @@ export default function CpoSimPage() {
     updateSessionTelemetryAndSend,
     updateSessionTelemetryOnly,
     emsps,
-    sessions,
-    cdrs,
-    handleSendEmspCommand,
+    showToast,
   } = useSimulator();
 
   // Simulator Configuration
@@ -135,17 +131,9 @@ export default function CpoSimPage() {
     "location",
   );
 
-  // EMSP Commands Panel State
-  const [selectedEmspIdForCmd, setSelectedEmspIdForCmd] = useState<string>("ALL");
-  const [cmdTokenUid, setCmdTokenUid] = useState<string>("TW-EMO-889900");
-  const [cmdAuthRef, setCmdAuthRef] = useState<string>(
-    () => `AUTH-${Math.floor(100000 + Math.random() * 900000)}`,
-  );
-
   // Derived state
   const matchedLocation = locations.find((l) => l.id === selectedLocationId);
   const matchedEvses = matchedLocation?.evses || [];
-  const activeCommandEmsp = emsps.find((e) => e.id === selectedEmspIdForCmd);
 
   // Update selected EVSE status state when selection changes
   useEffect(() => {
@@ -211,7 +199,7 @@ export default function CpoSimPage() {
       const party = parsed.party_id || "EVZ";
       const id = parsed.id;
       if (!id) {
-        alert("JSON 中缺少 id 屬性！");
+        showToast("JSON 中缺少 id 屬性！", "warning");
         return;
       }
       const res = await handleSyncCustomLocation(
@@ -221,13 +209,13 @@ export default function CpoSimPage() {
         parsed,
       );
       if (res.success) {
-        alert(`場站 ${id} 同步成功！`);
+        showToast(`場站 ${id} 同步成功！`, "success");
       } else {
-        alert(`同步失敗: ${res.error}`);
+        showToast(`同步失敗: ${res.error}`, "error");
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      alert(`JSON 格式錯誤: ${errorMsg}`);
+      showToast(`JSON 格式錯誤: ${errorMsg}`, "error");
     }
   };
 
@@ -236,7 +224,7 @@ export default function CpoSimPage() {
       const parsed = JSON.parse(tfJson);
       const id = parsed.id;
       if (!id) {
-        alert("JSON 中缺少 id 屬性！");
+        showToast("JSON 中缺少 id 屬性！", "warning");
         return;
       }
       const res = await handleSyncCustomTariff(
@@ -246,71 +234,17 @@ export default function CpoSimPage() {
         parsed,
       );
       if (res.success) {
-        alert(`費率 ${id} 同步成功！`);
+        showToast(`費率 ${id} 同步成功！`, "success");
       } else {
-        alert(`同步失敗: ${res.error}`);
+        showToast(`同步失敗: ${res.error}`, "error");
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      alert(`JSON 格式錯誤: ${errorMsg}`);
+      showToast(`JSON 格式錯誤: ${errorMsg}`, "error");
     }
   };
 
-  const handleSendCommandClick = async (cmdType: "START_SESSION" | "STOP_SESSION") => {
-    if (!activeCommandEmsp) {
-      alert("請先選擇一個 EMSP 發送方！");
-      return;
-    }
 
-    const tokenC = activeCommandEmsp.tokenC || "";
-    if (!tokenC) {
-      alert("所選 EMSP 缺少 Token C 認證，無法發送請求！");
-      return;
-    }
-
-    let payload: Record<string, unknown>;
-    if (cmdType === "START_SESSION") {
-      if (!selectedLocationId || !selectedEvseUid) {
-        alert("請先在 CPO 區塊中選擇場站與充電樁！");
-        return;
-      }
-      payload = {
-        response_url: `${activeCommandEmsp.url}/ocpi/2.2.1/commands/START_SESSION`,
-        token: {
-          country_code: activeCommandEmsp.countryCode,
-          party_id: activeCommandEmsp.partyId,
-          uid: cmdTokenUid,
-          type: "RFID",
-          contract_id: "TW-SMB-C1000",
-          visual_number: "11223344",
-          issuer: "SmartHub",
-          valid: true,
-        },
-        location_id: selectedLocationId,
-        evse_uid: selectedEvseUid,
-        authorization_reference: cmdAuthRef,
-      };
-    } else {
-      const matchedSession = Object.values(activeChargingSessions).find(
-        (sess) => sess.locationId === selectedLocationId && sess.evseUid === selectedEvseUid,
-      );
-      if (!matchedSession) {
-        alert("該槍頭目前沒有正在充電的 Session，無法發送停止命令！");
-        return;
-      }
-      payload = {
-        response_url: `${activeCommandEmsp.url}/ocpi/2.2.1/commands/STOP_SESSION`,
-        session_id: matchedSession.sessionId,
-      };
-    }
-
-    const res = await handleSendEmspCommand(tokenC, cmdType, payload);
-    if (res.success) {
-      alert(`EMSP ${cmdType} 傳送成功！HUB 回應 ACCEPTED。`);
-    } else {
-      alert(`EMSP ${cmdType} 發送失敗: ${res.error || "詳細錯誤請見右側 Console 日誌"}`);
-    }
-  };
 
   return (
     <div className="workspace">
@@ -350,7 +284,7 @@ export default function CpoSimPage() {
       </div>
 
       {/* CENTER COLS */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: "24px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: "24px" }}>
         
         {/* LEFT COLUMN: Mock CPO Simulator */}
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -563,8 +497,12 @@ export default function CpoSimPage() {
             </div>
           </div>
 
+        </div>
+
+        {/* RIGHT COLUMN: Tariff & Custom Assets Playground */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           {/* Card 2: Tariff & Custom Assets Playground */}
-          <div className="card">
+          <div className="card" style={{ borderLeft: "4px solid var(--accent-blue)" }}>
             <h3 className="card-title">
               <Database size={18} style={{ color: "var(--accent-blue)" }} />
               <span>費率與自訂數據調試 (Tariff & Custom Assets)</span>
@@ -630,7 +568,7 @@ export default function CpoSimPage() {
                     <textarea
                       value={locJson}
                       onChange={(e) => setLocJson(e.target.value)}
-                      rows={8}
+                      rows={12}
                       style={{ fontSize: "11.5px", fontFamily: "var(--font-mono)", background: "rgba(0,0,0,0.2)" }}
                     />
                     <button
@@ -646,7 +584,7 @@ export default function CpoSimPage() {
                     <textarea
                       value={tfJson}
                       onChange={(e) => setTfJson(e.target.value)}
-                      rows={8}
+                      rows={12}
                       style={{ fontSize: "11.5px", fontFamily: "var(--font-mono)", background: "rgba(0,0,0,0.2)" }}
                     />
                     <button
@@ -661,174 +599,6 @@ export default function CpoSimPage() {
               </div>
             </div>
           </div>
-
-        </div>
-
-        {/* RIGHT COLUMN: Mock EMSP Panel & Roaming Logs */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          
-          {/* Card 1: Mock EMSP Commands */}
-          <div className="card" style={{ borderLeft: "4px solid var(--accent-blue)" }}>
-            <h3 className="card-title">
-              <UserCheck size={18} style={{ color: "var(--accent-blue)" }} />
-              <span>移動出行商指令發送 (Mock EMSP Command)</span>
-            </h3>
-            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "-10px", marginBottom: "16px" }}>
-              模擬 EMSP 向 HUB 發起遠端遙控充電指令（OCPI Commands 模組）。
-            </p>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div className="form-group">
-                <label>選擇發起命令的 EMSP 租戶</label>
-                <select
-                  value={selectedEmspIdForCmd}
-                  onChange={(e) => setSelectedEmspIdForCmd(e.target.value)}
-                >
-                  <option value="">-- 請選擇 EMSP 租戶 --</option>
-                  {emsps.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name} ({e.countryCode}-{e.partyId}) - {e.url?.includes("mock-emsp") ? "MOCK" : "REAL"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {activeCommandEmsp ? (
-                <div style={{
-                  background: "rgba(56, 189, 248, 0.03)",
-                  border: "1px solid rgba(56, 189, 248, 0.15)",
-                  borderRadius: "10px",
-                  padding: "16px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px"
-                }}>
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    <span style={{ fontSize: "12px", color: "white", fontWeight: "bold" }}>發送 OCPI 遠端啟動/停止充電命令</span>
-                    <span style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-                      指令將帶上 Token C 發送至 HUB，驗證成功後轉發給 CPO 執行。
-                    </span>
-                  </div>
-
-                  <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr", margin: 0, gap: "10px" }}>
-                    <div className="form-group">
-                      <label>目標場站 (location_id)</label>
-                      <input type="text" value={selectedLocationId} readOnly style={{ background: "rgba(0,0,0,0.3)", color: "var(--text-secondary)", height: "32px", fontSize: "12px" }} />
-                    </div>
-                    <div className="form-group">
-                      <label>目標槍頭 (evse_uid)</label>
-                      <input type="text" value={selectedEvseUid || ""} readOnly style={{ background: "rgba(0,0,0,0.3)", color: "var(--text-secondary)", height: "32px", fontSize: "12px" }} />
-                    </div>
-                  </div>
-
-                  <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr", margin: 0, gap: "10px" }}>
-                    <div className="form-group">
-                      <label>RFID 卡號 (token.uid)</label>
-                      <input type="text" value={cmdTokenUid} onChange={(e) => setCmdTokenUid(e.target.value)} style={{ height: "32px", fontSize: "12px" }} />
-                    </div>
-                    <div className="form-group">
-                      <label>授權序號 (auth_ref)</label>
-                      <input type="text" value={cmdAuthRef} onChange={(e) => setCmdAuthRef(e.target.value)} style={{ height: "32px", fontSize: "12px" }} />
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
-                    <button
-                      onClick={() => handleSendCommandClick("START_SESSION")}
-                      className="button"
-                      style={{ flex: 1, height: "34px", fontSize: "12px", background: "linear-gradient(135deg, var(--accent-blue), #0284c7)" }}
-                      disabled={!selectedEvseUid}
-                    >
-                      <Zap size={13} /> 遠端啟動 (START)
-                    </button>
-                    <button
-                      onClick={() => handleSendCommandClick("STOP_SESSION")}
-                      className="button button-secondary"
-                      style={{ flex: 1, height: "34px", fontSize: "12px", color: "var(--accent-red)", borderColor: "rgba(239,68,68,0.2)" }}
-                      disabled={!selectedEvseUid}
-                    >
-                      遠端停止 (STOP)
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.15)", borderRadius: "8px", padding: "12px", color: "var(--accent-yellow)", fontSize: "12px" }}>
-                  <AlertTriangle size={16} />
-                  <span>請在下拉選單選擇一個 EMSP 帳戶以啟用指令測試</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Card 2: Active Sessions & CDRs Received at EMSPs */}
-          <div className="card">
-            <h3 className="card-title">
-              <CheckCircle size={18} style={{ color: "var(--accent-green)" }} />
-              <span>漫遊數據同步監控 (EMSP Roaming DB Logs)</span>
-            </h3>
-            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "-10px", marginBottom: "16px" }}>
-              即時檢視經由 HUB 成功轉發寫入 EMSP 資料庫之會話與帳單。
-            </p>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {/* Sessions List */}
-              <div style={{ background: "rgba(0,0,0,0.15)", padding: "14px", borderRadius: "10px", border: "1px solid var(--glass-border)" }}>
-                <span style={{ fontSize: "12px", fontWeight: "bold", color: "var(--text-secondary)", display: "block", marginBottom: "8px" }}>
-                  活動中的漫遊 Session ({sessions.filter(s => s.status === "ACTIVE").length})
-                </span>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "150px", overflowY: "auto" }}>
-                  {sessions.length > 0 ? (
-                    sessions.map((s) => (
-                      <div key={s.id} style={{ fontSize: "11px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255,255,255,0.01)", padding: "6px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.02)" }}>
-                        <span style={{ fontFamily: "var(--font-mono)" }}>ID: {s.id} ({s.evseUid})</span>
-                        <span>
-                          <strong style={{ color: "white" }}>{s.kwh.toFixed(1)} kWh</strong>
-                          <span style={{
-                            marginLeft: "8px",
-                            fontSize: "9px",
-                            padding: "2px 6px",
-                            borderRadius: "10px",
-                            background: s.status === "ACTIVE" ? "rgba(56, 189, 248, 0.15)" : "rgba(255,255,255,0.06)",
-                            color: s.status === "ACTIVE" ? "var(--accent-blue)" : "var(--text-secondary)",
-                            fontWeight: "bold"
-                          }}>{s.status}</span>
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <span style={{ fontSize: "11px", color: "var(--text-muted)", textAlign: "center", display: "block", padding: "12px 0" }}>目前無漫遊 Session 資料</span>
-                  )}
-                </div>
-              </div>
-
-              {/* CDRs List */}
-              <div style={{ background: "rgba(0,0,0,0.15)", padding: "14px", borderRadius: "10px", border: "1px solid var(--glass-border)" }}>
-                <span style={{ fontSize: "12px", fontWeight: "bold", color: "var(--text-secondary)", display: "block", marginBottom: "8px" }}>
-                  已結算 CDR 漫遊帳單明細 ({cdrs.length})
-                </span>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "150px", overflowY: "auto" }}>
-                  {cdrs.length > 0 ? (
-                    cdrs.map((c) => {
-                      const cost = (c.rawJson as { total_cost?: { excl_vat?: number } })?.total_cost?.excl_vat || 0;
-                      const energy = (c.rawJson as { total_energy?: number })?.total_energy || 0;
-                      return (
-                        <div key={c.id} style={{ fontSize: "11px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255,255,255,0.01)", padding: "6px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.02)" }}>
-                          <span style={{ fontFamily: "var(--font-mono)" }}>單號: {c.id}</span>
-                          <span>
-                            <span style={{ color: "var(--text-secondary)", marginRight: "8px" }}>{energy.toFixed(1)} kWh</span>
-                            <strong style={{ color: "var(--accent-green)" }}>TWD {cost}</strong>
-                          </span>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <span style={{ fontSize: "11px", color: "var(--text-muted)", textAlign: "center", display: "block", padding: "12px 0" }}>尚未產生任何結帳帳單 (CDRs)</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
         </div>
       </div>
 

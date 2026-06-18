@@ -1,5 +1,5 @@
 import { useSimulator } from "../context/SimulatorContext";
-import { Zap, Cpu, Layers } from "./Icons";
+import { Zap, Cpu, Layers, UserCheck } from "./Icons";
 
 export default function Sidebar() {
   const {
@@ -44,7 +44,7 @@ export default function Sidebar() {
             }}
           >
             <Zap size={18} />
-            儀表面板
+            Dashboard
           </a>
         </li>
         <li>
@@ -56,7 +56,19 @@ export default function Sidebar() {
             }}
           >
             <Cpu size={18} />
-            CPO 多樁充電模擬 ({activeSessionsCount})
+            Charger Simulator ({activeSessionsCount})
+          </a>
+        </li>
+        <li>
+          <a
+            className={`nav-item ${activeTab === "emsp-sim" ? "active" : ""}`}
+            onClick={() => {
+              setActiveTab("emsp-sim");
+              setSidebarOpen(false);
+            }}
+          >
+            <UserCheck size={18} />
+            eMSP Simulator
           </a>
         </li>
         <li>
@@ -68,7 +80,7 @@ export default function Sidebar() {
             }}
           >
             <Layers size={18} />
-            HUB 控制面板
+            HUB Dashboard
           </a>
         </li>
         {/* <li>
