@@ -409,6 +409,8 @@ Instruct the CPO to stop a charging session.
   - `Authorization: Bearer <TOKEN_B>`
   - `OCPI-to-party-id`: `<CPO_PARTY_ID>`
   - `OCPI-to-country-code`: `<CPO_COUNTRY_CODE>`
+  - `OCPI-from-party-id` : `<EMSP_PARTY_ID>`
+  - `OCPI-from-country-code`: `<EMSP_COUNTRY_CODE>`
 - **Request Body**:
   ```json
   {

@@ -14,7 +14,7 @@ export class ThrottlerGuard implements CanActivate {
   private readonly logger = new Logger(ThrottlerGuard.name);
 
   // Default limits for unauthenticated/simulator traffic
-  private readonly defaultLimit = 100;
+  private readonly defaultLimit = 30;
   private readonly defaultWindowSeconds = 60;
 
   constructor(
