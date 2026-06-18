@@ -7,6 +7,8 @@ import {
   Database,
 } from "../components/Icons";
 import { useState, useEffect } from "react";
+import isChargingIcon from "../assets/isCharging.svg";
+import noChargingIcon from "../assets/noCharging.svg";
 
 const OCPP_TO_OCPI: Record<string, string> = {
   Available: "AVAILABLE",
@@ -630,8 +632,12 @@ export default function CpoSimPage() {
                 </div>
 
                 <div className="evse-visual">
-                  <span className="evse-icon-glow" style={{ fontSize: "32px" }}>
-                    {isCharging ? "⚡" : "🔋"}
+                  <span className="evse-icon-glow" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <img 
+                      src={isCharging ? isChargingIcon : noChargingIcon} 
+                      alt={isCharging ? "Charging" : "Not Charging"} 
+                      style={{ width: "32px", height: "32px" }} 
+                    />
                   </span>
                 </div>
 
