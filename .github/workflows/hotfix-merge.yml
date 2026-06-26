@@ -1,0 +1,56 @@
+name: Immediate Hotfix Merge
+
+on:
+  pull_request:
+    types: [labeled, opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  hotfix-merge:
+    runs-on: ubuntu-latest
+    # Run only if the pull request target branch is main and is currently open
+    if: |
+      (github.event.pull_request && github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open') ||
+      (github.event.review && github.event.review.pull_request && github.event.review.pull_request.base.ref == 'main' && github.event.review.pull_request.state == 'open')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check and Merge Hotfix
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Determine PR number from either pull_request or pull_request_review event
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.review.pull_request.number }}
+        run: |
+          echo "Checking PR #$PR_NUMBER for immediate hotfix criteria..."
+          
+          # Fetch PR labels
+          LABELS=$(gh pr view $PR_NUMBER --json labels --jq '.labels[].name')
+          
+          IS_HOTFIX=false
+          for label in $LABELS; do
+            if [ "$label" == "hotfix" ] || [ "$label" == "urgent" ]; then
+              IS_HOTFIX=true
+            fi
+          done
+          
+          if [ "$IS_HOTFIX" = "false" ]; then
+            echo "PR #$PR_NUMBER is not labeled as 'hotfix' or 'urgent'. Skipping."
+            exit 0
+          fi
+          
+          # Check review status
+          REVIEW_STATUS=$(gh pr view $PR_NUMBER --json reviewDecision --jq '.reviewDecision')
+          
+          if [ "$REVIEW_STATUS" == "APPROVED" ]; then
+            echo "PR #$PR_NUMBER is APPROVED and labeled as hotfix! Merging immediately..."
+            gh pr merge $PR_NUMBER --merge --delete-branch
+            echo "Hotfix PR #$PR_NUMBER merged successfully!"
+          else
+            echo "⚠️ Hotfix PR #$PR_NUMBER is not yet APPROVED. Waiting for approval."
+          fi

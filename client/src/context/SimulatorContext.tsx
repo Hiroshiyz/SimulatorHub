@@ -15,17 +15,18 @@ import type {
   OcpiCdr,
   OcpiTotalCost,
   CpoTenant,
+  ToastMessage,
 } from "../types/simulator";
 
 interface SimulatorContextType {
   activeTab:
     | "dashboard"
     | "cpo-sim"
+    | "emsp-sim"
     | "hub-router"
-    | "autocharge"
-    | "ocpi-payload";
+    | "autocharge";
   setActiveTab: (
-    tab: "dashboard" | "cpo-sim" | "hub-router" | "autocharge" | "ocpi-payload",
+    tab: "dashboard" | "cpo-sim" | "emsp-sim" | "hub-router" | "autocharge",
   ) => void;
   isOnline: boolean;
   serverVersion: string;
@@ -79,6 +80,9 @@ interface SimulatorContextType {
   setNewToken: (val: string) => void;
   newEmsp: string;
   setNewEmsp: (val: string) => void;
+  toasts: ToastMessage[];
+  showToast: (message: string, type?: "success" | "error" | "info" | "warning") => void;
+  removeToast: (id: string) => void;
 
   fetchDatabaseState: () => Promise<void>;
   fetchEmspStatus: () => Promise<void>;
@@ -126,6 +130,15 @@ interface SimulatorContextType {
     tokenC: string,
   ) => Promise<{ success: boolean; error?: string }>;
   handleSyncAllLocations: () => Promise<{ success: boolean; count: number }>;
+  handleSyncLocationsToSpecificEmsp: (
+    countryCode: string,
+    partyId: string,
+  ) => Promise<{ success: boolean; count?: number; error?: string }>;
+  handleSendEmspCommand: (
+    emspToken: string,
+    command: "START_SESSION" | "STOP_SESSION",
+    payload: unknown,
+  ) => Promise<{ success: boolean; data?: unknown; error?: string }>;
   initializeMockStations: () => Promise<void>;
   handlePatchStatus: (
     locationId: string,
@@ -138,9 +151,21 @@ interface SimulatorContextType {
     isAutoCharge?: boolean,
     customMac?: string | null,
     customSessId?: string,
+    initialIsAuto?: boolean,
+    customTokenUid?: string | null,
+    customEmspId?: string | null,
   ) => Promise<void>;
   stopSimulatedCharging: (evseUid: string) => Promise<void>;
-  transmitCdr: (cdrId: string) => Promise<void>;
+  updateSessionTelemetryAndSend: (
+    evseUid: string,
+    fields: Partial<ActiveSessionState>,
+  ) => Promise<void>;
+  updateSessionTelemetryOnly: (
+    evseUid: string,
+    fields: Partial<ActiveSessionState>,
+  ) => void;
+  tariffPrice: number;
+  transmitCdr: (cdrId: string, customCdr?: OcpiCdr) => Promise<void>;
   triggerManualSessionSend: () => Promise<void>;
   triggerManualCdrSend: () => Promise<void>;
   handleAddAutoCharge: (e: React.FormEvent) => void;
@@ -168,10 +193,28 @@ const SimulatorContext = createContext<SimulatorContextType | undefined>(
   undefined,
 );
 
+function generateRandomCdrId() {
+  return `CDR-${Math.floor(100000 + Math.random() * 900000)}`;
+}
+
 export function SimulatorProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cpo-sim" | "hub-router" | "autocharge" | "ocpi-payload"
+    "dashboard" | "cpo-sim" | "emsp-sim" | "hub-router" | "autocharge"
   >("dashboard");
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "info") => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
   const [isOnline, setIsOnline] = useState<boolean>(false);
   const [serverVersion, setServerVersion] = useState<string>("Unknown");
   const [logs, setLogs] = useState<LogEntry[]>([
@@ -278,6 +321,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
   const [activeChargingSessions, setActiveChargingSessions] = useState<{
     [evseUid: string]: ActiveSessionState;
   }>({});
+
+  const [tariffPrice, setTariffPrice] = useState<number>(9.5);
 
   const terminalBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -387,6 +432,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           url: string;
           online: boolean;
           latency: number;
+          tokenC?: string;
         }>;
         setEmsps((prev) => {
           return emspData.map((backendEmsp) => {
@@ -406,6 +452,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
               online: backendEmsp.online,
               latency: backendEmsp.latency,
               active: existing ? existing.active : true,
+              tokenC: backendEmsp.tokenC,
             };
           });
         });
@@ -616,6 +663,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
 
   // Synchronize Tariff to HUB and EMSP
   const handleSyncTariff = async (energyPrice = 9.5) => {
+    setTariffPrice(energyPrice);
     const tariffPayload = {
       id: "TAR-REGULAR",
       currency: "TWD",
@@ -772,6 +820,74 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     return { success: res.success, count: dataObj?.count || 0 };
   };
 
+  const handleSyncLocationsToSpecificEmsp = async (
+    countryCode: string,
+    partyId: string,
+  ) => {
+    addLog(
+      "SYSTEM",
+      "SYNC_SPECIFIC_EMSP",
+      `手動同步所有場站資訊至特定 EMSP: ${countryCode}-${partyId}`,
+      "info",
+    );
+    const res = await sendRequest(
+      `Sync to ${countryCode}-${partyId}`,
+      `/simulator/locations/sync-specific/${countryCode}/${partyId}`,
+      "POST",
+      undefined,
+      true,
+    );
+    const dataObj = res.data as { count?: number } | undefined;
+    return { success: res.success, count: dataObj?.count || 0 };
+  };
+
+  const handleSendEmspCommand = async (
+    emspToken: string,
+    command: "START_SESSION" | "STOP_SESSION",
+    payload: unknown,
+  ) => {
+    addLog(
+      "eMSP",
+      `SEND_${command}`,
+      `發送命令 ${command} 呼叫 HUB (以 Token ${emspToken ? emspToken.substring(0, 8) : ""}...)`,
+      "info",
+      payload,
+    );
+    try {
+      triggerFlowAnimation(true);
+      const res = await fetch(`/ocpi/2.2.1/commands/${command}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Token ${emspToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      
+      addLog(
+        "HUB",
+        `${command}_RESPONSE`,
+        `收到 HUB 對命令 ${command} 的回傳結果: ${data?.status_message || "N/A"}`,
+        res.ok ? "success" : "error",
+        undefined,
+        data,
+      );
+
+      await fetchDatabaseState();
+      return { success: res.ok, data };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      addLog(
+        "SYSTEM",
+        `${command}_FAILED`,
+        `發送命令 ${command} 失敗: ${errorMsg}`,
+        "error",
+      );
+      return { success: false, error: errorMsg };
+    }
+  };
+
   const handlePatchStatus = async (
     locationId: string,
     evseUid: string,
@@ -797,6 +913,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     isAutoCharge = false,
     customMac: string | null = null,
     customSessId?: string,
+    initialIsAuto = true,
+    customTokenUid: string | null = null,
+    customEmspId: string | null = null,
   ) => {
     // Check if EVSE is already charging
     const activeUids = Object.keys(activeSessionsRef.current);
@@ -810,15 +929,17 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    let tokenUid = "MANUAL-TOKEN-CPO";
-    let emspId = "EMSP-A";
+    const activeEmsp = emspsRef.current.find((e) => e.active) || emspsRef.current[0];
+    let emspId = customEmspId || (activeEmsp ? activeEmsp.id : "EMSP-A");
+    let tokenUid = customTokenUid || "MANUAL-TOKEN-CPO";
     let authMethod = "RFID_SWIPE";
 
     if (isAutoCharge && customMac) {
       const mapping = autoCharges.find((m) => m.mac === customMac);
       if (mapping) {
         tokenUid = mapping.tokenUid;
-        emspId = mapping.emspId;
+        const matchedDbEmsp = emspsRef.current.find((e) => e.partyId === mapping.emspId || e.id === mapping.emspId);
+        emspId = matchedDbEmsp ? matchedDbEmsp.id : emspId;
         authMethod = "AUTO_CHARGE";
         addLog(
           "CPO_SIM",
@@ -837,7 +958,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const matchedEmsp = emspsRef.current.find((e) => e.id === emspId);
+    const matchedEmsp = emspsRef.current.find(
+      (e) => e.id === emspId || e.id === "EMSP-A" || e.partyId === "SMB" || e.active
+    ) || emspsRef.current[0];
 
     // 1. Authorize lookup simulation
     addLog(
@@ -905,6 +1028,19 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     );
 
     if (res.success) {
+      let initialKw = 120.0;
+      const matchedEvse = locationsRef.current
+        .flatMap((l) => l.evses)
+        .find((e) => e.uid === evseUid);
+      if (matchedEvse) {
+        const connectors = matchedEvse.connectors || matchedEvse.rawJson?.connectors;
+        if (connectors?.[0]?.max_electric_power) {
+          initialKw = connectors[0].max_electric_power / 1000;
+        }
+      }
+      const initialVoltage = 400.0;
+      const initialCurrent = Math.round(((initialKw * 1000) / initialVoltage) * 10) / 10;
+
       const activeObj: ActiveSessionState = {
         sessionId: generatedSessId,
         evseUid,
@@ -913,6 +1049,12 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         soc: 15.0,
         cost: 0.0,
         startTime: startTimeStr,
+        kw: initialKw,
+        voltage: initialVoltage,
+        current: initialCurrent,
+        status: "ACTIVE",
+        isAuto: initialIsAuto,
+        emspId,
       };
 
       setActiveChargingSessions((prev) => ({
@@ -937,111 +1079,168 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Stop charging & Generate CDR
-  const stopSimulatedCharging = async (evseUid: string) => {
+  // Update session telemetry only (local state update without sending)
+  const updateSessionTelemetryOnly = (
+    evseUid: string,
+    fields: Partial<ActiveSessionState>,
+  ) => {
+    setActiveChargingSessions((prev) => {
+      if (!prev[evseUid]) return prev;
+      return {
+        ...prev,
+        [evseUid]: {
+          ...prev[evseUid],
+          ...fields,
+        },
+      };
+    });
+  };
+
+  // Update session telemetry and send PUT request to HUB
+  const updateSessionTelemetryAndSend = async (
+    evseUid: string,
+    fields: Partial<ActiveSessionState>,
+  ) => {
     const session = activeSessionsRef.current[evseUid];
     if (!session) return;
 
-    const stopTimeStr = new Date().toISOString();
+    const mergedSession = {
+      ...session,
+      ...fields,
+    };
 
-    // 1. PUT Session to CPO receiver (State: COMPLETED)
-    const finalSessionPayload = {
-      id: session.sessionId,
-      start_date_time: session.startTime,
-      end_date_time: stopTimeStr,
-      kwh: session.kwh,
-      location_id: session.locationId,
-      evse_uid: session.evseUid,
-      status: "COMPLETED",
+    const price = typeof tariffPrice === "number" && !isNaN(tariffPrice) ? tariffPrice : 9.5;
+    const kwhValue = typeof mergedSession.kwh === "number" && !isNaN(mergedSession.kwh) ? mergedSession.kwh : 0.0;
+    const computedCost = Math.round(20.0 + kwhValue * price);
+    mergedSession.cost = computedCost;
+
+    setActiveChargingSessions((prev) => {
+      if (!prev[evseUid]) return prev;
+      return {
+        ...prev,
+        [evseUid]: mergedSession,
+      };
+    });
+
+    const sessionPayload = {
+      id: mergedSession.sessionId,
+      start_date_time: mergedSession.startTime,
+      kwh: mergedSession.kwh,
+      location_id: mergedSession.locationId,
+      evse_uid: mergedSession.evseUid,
+      status: mergedSession.status || "ACTIVE",
       total_cost: {
-        excl_vat: Number((session.cost * 0.95).toFixed(2)),
-        incl_vat: session.cost,
+        excl_vat: Math.round(computedCost * 0.95),
+        incl_vat: computedCost,
       },
-      last_updated: stopTimeStr,
+      charging_periods: [
+        {
+          start_date_time: mergedSession.startTime,
+          dimensions: [
+            { type: "STATE_OF_CHARGE", volume: mergedSession.soc },
+            { type: "POWER", volume: mergedSession.kw },
+            { type: "ENERGY", volume: mergedSession.kwh },
+            { type: "CURRENT", volume: mergedSession.current },
+            { type: "VOLTAGE", volume: mergedSession.voltage }
+          ]
+        }
+      ],
+      last_updated: new Date().toISOString(),
+      emsp_id: mergedSession.emspId,
       ...sessionTemplateRef.current,
     };
 
-    const { countryCode, partyId } = getLocCpoInfo(session.locationId);
+    const { countryCode, partyId } = getLocCpoInfo(mergedSession.locationId);
+    
     await sendRequest(
-      `Complete Session [${session.sessionId}]`,
-      `/simulator/simulate/sessions/${countryCode}/${partyId}/${session.sessionId}`,
+      `Update Session [${mergedSession.sessionId}] (${mergedSession.status})`,
+      `/simulator/simulate/sessions/${countryCode}/${partyId}/${mergedSession.sessionId}`,
       "POST",
-      finalSessionPayload,
+      sessionPayload,
     );
 
-    // 2. PATCH EVSE status back to AVAILABLE
-    await handlePatchStatus(session.locationId, evseUid, "AVAILABLE");
+    if (mergedSession.status === "COMPLETED" || mergedSession.status === "INVALID") {
+      await handlePatchStatus(mergedSession.locationId, evseUid, "AVAILABLE");
 
-    // 3. Auto-generate CDR invoice
-    addLog(
-      "CPO_SIM",
-      "GENERATING_CDR",
-      `會話結束，自動生成 CDR 結算單 (單號: ${session.sessionId})`,
-      "info",
-    );
+      addLog(
+        "CPO_SIM",
+        "GENERATING_CDR",
+        `會話結束 (${mergedSession.status})，自動生成 CDR 結算單 (單號: ${mergedSession.sessionId})`,
+        "info",
+      );
 
-    const newCdr = {
-      id: `CDR-${Math.floor(100000 + Math.random() * 900000)}`,
-      start_date_time: session.startTime,
-      end_date_time: stopTimeStr,
-      kwh: session.kwh,
-      authorization_reference: session.sessionId,
-      total_cost: {
-        excl_vat: Number((session.cost * 0.95).toFixed(2)),
-        incl_vat: session.cost,
-      },
-      total_energy: session.kwh,
-      total_time: Math.floor(
-        (new Date(stopTimeStr).getTime() -
-          new Date(session.startTime).getTime()) /
-          1000,
-      ),
-      last_updated: stopTimeStr,
-      ctr_code: "TW",
-      party_id: "CPO",
-      settled: false,
-      transmission_status: "PENDING",
-      ...cdrTemplateRef.current,
-    };
+      const stopTimeStr = new Date().toISOString();
+      const newCdr = {
+        id: generateRandomCdrId(),
+        start_date_time: mergedSession.startTime,
+        end_date_time: stopTimeStr,
+        kwh: mergedSession.kwh,
+        authorization_reference: mergedSession.sessionId,
+        total_cost: {
+          excl_vat: Math.round(computedCost * 0.95),
+          incl_vat: computedCost,
+        },
+        total_energy: mergedSession.kwh,
+        total_time: Math.floor(
+          (new Date(stopTimeStr).getTime() -
+            new Date(mergedSession.startTime).getTime()) /
+            1000,
+        ),
+        last_updated: stopTimeStr,
+        ctr_code: countryCode,
+        party_id: partyId,
+        settled: false,
+        transmission_status: "PENDING",
+        emsp_id: mergedSession.emspId,
+        ...cdrTemplateRef.current,
+      };
 
-    setCdrPayloadEdit(newCdr);
+      setCdrPayloadEdit(newCdr);
 
-    // Trigger local POST CDR invoice
-    await sendRequest(
-      `Post CDR Receipt`,
-      "/simulator/simulate/cdrs",
-      "POST",
-      newCdr,
-    );
+      const cdrRes = await sendRequest(
+        `Post CDR Receipt`,
+        "/simulator/simulate/cdrs",
+        "POST",
+        newCdr,
+      );
 
-    // Remove from local active interval
-    setActiveChargingSessions((prev) => {
-      const next = { ...prev };
-      delete next[evseUid];
-      return next;
-    });
+      if (cdrRes.success) {
+        await transmitCdr(newCdr.id, newCdr);
+      }
 
-    addLog(
-      "CPO_SIM",
-      "SESSION_STOPPED",
-      `手動停止充電! Session ID: ${session.sessionId}，已生成結算單。`,
-      "info",
-    );
+      setActiveChargingSessions((prev) => {
+        const next = { ...prev };
+        delete next[evseUid];
+        return next;
+      });
+
+      addLog(
+        "CPO_SIM",
+        "SESSION_STOPPED",
+        `充電會話 [${mergedSession.sessionId}] 結束！狀態: ${mergedSession.status}，已自動發送結算單。`,
+        "info",
+      );
+    }
+  };
+
+  // Stop charging & Generate CDR
+  const stopSimulatedCharging = async (evseUid: string) => {
+    await updateSessionTelemetryAndSend(evseUid, { status: "COMPLETED" });
   };
 
   // Push CDR settlement invoice to matching EMSP via HUB
-  const transmitCdr = async (cdrId: string) => {
+  const transmitCdr = async (cdrId: string, customCdr?: OcpiCdr) => {
     // Find the record
     const matchedCdr = cdrs.find((c) => c.id === cdrId);
-    const payload = matchedCdr
+    const payload = customCdr || (matchedCdr
       ? (matchedCdr.rawJson as unknown as OcpiCdr)
-      : cdrPayloadEdit;
+      : cdrPayloadEdit);
 
     if (!payload) return;
 
     const matchedEmsp = emsps.find(
-      (e) => e.id === payload.emsp_id || e.id === "EMSP-A",
-    );
+      (e) => e.id === payload.emsp_id || e.id === "EMSP-A" || e.partyId === "SMB" || e.active
+    ) || emsps[0];
     addLog(
       "HUB",
       "ROUTING_CDR",
@@ -1096,7 +1295,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       "info",
     );
 
-    const matchedEmsp = emsps.find((e) => e.id === sessionPayloadEdit.emsp_id);
+    const matchedEmsp = emsps.find(
+      (e) => e.id === sessionPayloadEdit.emsp_id || e.id === "EMSP-A" || e.partyId === "SMB" || e.active
+    ) || emsps[0];
     if (matchedEmsp && matchedEmsp.active) {
       const { countryCode, partyId } = getLocCpoInfo(
         sessionPayloadEdit.location_id || "",
@@ -1131,7 +1332,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       `手動發送自訂 CDR [${cdrPayloadEdit.id}] 給 HUB`,
       "info",
     );
-    await transmitCdr(cdrPayloadEdit.id);
+    await transmitCdr(cdrPayloadEdit.id, cdrPayloadEdit);
   };
 
   // AutoCharge registration
@@ -1175,20 +1376,11 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
 
       for (const uid of activeUids) {
         const session = activeChargingSessions[uid];
-        let powerKw = 120.0;
+        // If automatic simulation is disabled, skip auto increment
+        if (session.isAuto === false) continue;
+
+        const powerKw = session.kw !== undefined ? session.kw : 120.0;
         const maxSoc = 100.0;
-
-        const matchingEvse = locations
-          .flatMap((l) => l.evses)
-          .find((e) => e.uid === uid);
-
-        if (matchingEvse) {
-          const connectors =
-            matchingEvse.connectors || matchingEvse.rawJson?.connectors;
-          if (connectors?.[0]?.max_electric_power) {
-            powerKw = connectors[0].max_electric_power / 1000;
-          }
-        }
 
         // Add variance to power
         const powerVar =
@@ -1202,8 +1394,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           nextSoc = maxSoc;
         }
 
-        // Price calculation based on TAR-REGULAR (default 9.5 / Flat 20.0)
-        const nextCost = Math.round((20.0 + nextKwh * 9.5) * 10) / 10;
+        // Price calculation based on current tariffPrice
+        const nextCost = Math.round(20.0 + nextKwh * tariffPrice);
 
         // Auto Stop when charged to 100%
         if (nextSoc === 100 && session.soc < 100) {
@@ -1213,9 +1405,20 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
             `充電樁 ${uid} 已充滿 100%`,
             "success",
           );
-          setTimeout(() => stopSimulatedCharging(uid), 500);
+          const finalSessionState = {
+            soc: 100.0,
+            kwh: nextKwh,
+            cost: nextCost,
+            kw: 0,
+            current: 0,
+            status: "COMPLETED" as const,
+          };
+          setTimeout(() => updateSessionTelemetryAndSend(uid, finalSessionState), 500);
           return;
         }
+
+        const currentVoltage = session.voltage || 400.0;
+        const currentAmp = Math.round(((powerVar * 1000) / currentVoltage) * 10) / 10;
 
         // Update local session tracking state
         setActiveChargingSessions((prev) => {
@@ -1227,6 +1430,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
               soc: Math.round(nextSoc * 10) / 10,
               kwh: nextKwh,
               cost: nextCost,
+              kw: powerVar,
+              current: currentAmp,
             },
           };
         });
@@ -1238,11 +1443,23 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           kwh: nextKwh,
           location_id: session.locationId,
           evse_uid: session.evseUid,
-          status: "ACTIVE",
+          status: session.status || "ACTIVE",
           total_cost: {
-            excl_vat: Number((nextCost * 0.95).toFixed(2)),
+            excl_vat: Math.round(nextCost * 0.95),
             incl_vat: nextCost,
           },
+          charging_periods: [
+            {
+              start_date_time: session.startTime,
+              dimensions: [
+                { type: "STATE_OF_CHARGE", volume: Math.round(nextSoc * 10) / 10 },
+                { type: "POWER", volume: powerVar },
+                { type: "ENERGY", volume: nextKwh },
+                { type: "CURRENT", volume: currentAmp },
+                { type: "VOLTAGE", volume: currentVoltage }
+              ]
+            }
+          ],
           last_updated: new Date().toISOString(),
           ...sessionTemplateRef.current,
         };
@@ -1264,7 +1481,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           addLog(
             "HUB",
             "ROUTING_SESSION_UPDATE",
-            `PUT Session: ${session.sessionId} -> 轉傳給 [${matchedEmsp?.name || "eMSP"}] (${nextSoc}%, ${nextKwh} kWh, $${nextCost} TWD)`,
+            `PUT Session: ${session.sessionId} -> 轉傳給 [${matchedEmsp?.name || "eMSP"}] (${Math.round(nextSoc * 10) / 10}%, ${nextKwh} kWh, $${nextCost} TWD)`,
             "info",
           );
         }
@@ -1275,7 +1492,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
 
     return () => clearInterval(chargingTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChargingSessions, locations]);
+  }, [activeChargingSessions, locations, tariffPrice]);
 
   // Server-Sent Events (SSE) Synchronization listener
   useEffect(() => {
@@ -1287,7 +1504,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         console.log("SSE Event Received:", parsed);
 
         if (parsed.type === "START_SESSION") {
-          const { location_id, evse_uid, authorization_reference } =
+          const { location_id, evse_uid, authorization_reference, token, emsp_id } =
             parsed.data;
           const locId = location_id || "loc_001";
           const evseU = evse_uid || "TW-CPO-EVSE-001";
@@ -1306,6 +1523,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
               false,
               null,
               authorization_reference,
+              false,
+              token?.uid || "MANUAL-TOKEN-CPO",
+              emsp_id || null,
             );
           }
         } else if (parsed.type === "STOP_SESSION") {
@@ -1376,6 +1596,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         setSessionTemplate,
         cdrTemplate,
         setCdrTemplate,
+        updateSessionTelemetryAndSend,
+        updateSessionTelemetryOnly,
+        tariffPrice,
 
         // Phase 2 states
         emsps,
@@ -1410,6 +1633,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         handleAddCpo,
         handleAddEmsp,
         handleSyncAllLocations,
+        handleSyncLocationsToSpecificEmsp,
+        handleSendEmspCommand,
         initializeMockStations,
         handlePatchStatus,
         startSimulatedCharging,
@@ -1419,6 +1644,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         triggerManualCdrSend,
         handleAddAutoCharge,
         terminalBodyRef,
+        toasts,
+        showToast,
+        removeToast,
       }}
     >
       {children}

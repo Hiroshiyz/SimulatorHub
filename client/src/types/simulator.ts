@@ -73,6 +73,7 @@ export interface EmspChannel {
   url?: string;
   online?: boolean;
   latency?: number;
+  tokenC?: string;
 }
 
 export interface DbSession {
@@ -112,6 +113,12 @@ export interface ActiveSessionState {
   soc: number;
   cost: number;
   startTime: string;
+  kw?: number;
+  current?: number;
+  voltage?: number;
+  status?: "ACTIVE" | "COMPLETED" | "INVALID";
+  isAuto?: boolean;
+  emspId?: string;
 }
 
 export interface SessionTemplate {
@@ -188,6 +195,12 @@ export interface CpoTenant {
     tokenC: string | null;
     url: string | null;
   } | null;
+}
+
+export interface ToastMessage {
+  id: string;
+  message: string;
+  type: "success" | "error" | "info" | "warning";
 }
 
 

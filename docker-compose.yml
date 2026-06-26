@@ -1,25 +1,50 @@
 services:
   postgres:
     image: postgres:16
-    container_name: mock-hub-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5434:5432"
+      - "${DB_PORT:-5434}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   redis:
     image: redis:7.2
-    container_name: mock-hub-redis
     command: redis-server --requirepass "${REDIS_PASSWORD}"
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redisdata:/data
+    restart: unless-stopped
+
+  mock-hub:
+    image: ${MOCK_HUB_IMAGE:-mock-hub-app}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - PORT=3030
+      - NODE_ENV=production
+      - CREDENTIALS_TOKEN_B=${CREDENTIALS_TOKEN_B}
+      - EMSP_BASE_URL=${EMSP_BASE_URL}
+      - HUB_BASE_URL=${HUB_BASE_URL}
+    ports:
+      - "${APP_PORT:-3030}:3030"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

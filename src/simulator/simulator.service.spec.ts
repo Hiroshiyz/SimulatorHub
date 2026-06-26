@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { SimulatorService } from "./simulator.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { OcpiService } from "../ocpi/ocpi.service";
+import { EmspService } from "../emsp/emsp.service";
 import axios from "axios";
 
 jest.mock("axios");
@@ -9,6 +10,7 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 describe("SimulatorService", () => {
   let service: SimulatorService;
+  let emspService: EmspService;
   let mockPrisma: any;
 
   beforeEach(async () => {
@@ -38,10 +40,19 @@ describe("SimulatorService", () => {
             },
           },
         },
+        {
+          provide: EmspService,
+          useValue: {
+            registerEmsp: jest.fn().mockResolvedValue({}),
+            getEmspStatus: jest.fn().mockResolvedValue([]),
+            syncLocationsToEmsp: jest.fn().mockResolvedValue({ success: true, count: 0 }),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<SimulatorService>(SimulatorService);
+    emspService = module.get<EmspService>(EmspService);
     process.env.HUB_BASE_URL = "http://localhost:3030";
     process.env.CREDENTIALS_TOKEN_B = "mock_token_b_12345";
   });
@@ -170,11 +181,12 @@ describe("SimulatorService", () => {
         url: "http://localhost:5053",
         tokenC: "mock_token_c",
       };
+      const expectedResult = { id: "mock_party_id", partyId: "EVZ_EMSP", role: "EMSP" };
+      jest.spyOn(emspService, "registerEmsp").mockResolvedValueOnce(expectedResult as any);
 
       const result = await service.registerEmsp(payload);
 
-      expect(mockPrisma.party.upsert).toHaveBeenCalled();
-      expect(mockPrisma.credential.upsert).toHaveBeenCalled();
+      expect(emspService.registerEmsp).toHaveBeenCalledWith(payload);
       expect(result.partyId).toBe("EVZ_EMSP");
     });
   });
@@ -196,20 +208,25 @@ describe("SimulatorService", () => {
   });
 
   describe("getEmspStatus", () => {
-    it("should return correct status even if versions endpoint returns 401", async () => {
-      mockPrisma.party.findMany.mockResolvedValueOnce([
+    it("should return correct status by delegating to EmspService", async () => {
+      const expectedStatus = [
         {
           id: "emsp-1",
           countryCode: "TW",
           partyId: "EMSP",
-          role: "EMSP",
-          credential: { url: "http://localhost:5053" },
+          name: "EMSP",
+          url: "http://localhost:5053",
+          online: true,
+          latency: 10,
+          error: null,
+          tokenC: "mock_token_c",
         },
-      ]);
-      mockedAxios.get.mockResolvedValueOnce({ status: 401 }); // Mock versions endpoint returning 401
+      ];
+      jest.spyOn(emspService, "getEmspStatus").mockResolvedValueOnce(expectedStatus);
 
       const result = await service.getEmspStatus();
 
+      expect(emspService.getEmspStatus).toHaveBeenCalled();
       expect(result[0].online).toBe(true);
       expect(result[0].error).toBeNull();
     });

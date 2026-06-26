@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { OcpiService } from "./ocpi.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { PartyContext } from "../common/decorators/current-party.decorator";
+import { EmspService } from "../emsp/emsp.service";
 
 describe("OcpiService", () => {
   let service: OcpiService;
@@ -12,6 +13,13 @@ describe("OcpiService", () => {
     evse: { upsert: jest.fn() },
     session: { upsert: jest.fn() },
     cdr: { upsert: jest.fn() },
+  };
+
+  const mockEmspService = {
+    forwardToEmsps: jest.fn().mockResolvedValue(undefined),
+    syncLocationsToEmsp: jest.fn().mockResolvedValue({ success: true, count: 0 }),
+    registerEmsp: jest.fn().mockResolvedValue({}),
+    getEmspStatus: jest.fn().mockResolvedValue([]),
   };
 
   const mockParty: PartyContext = {
@@ -28,6 +36,10 @@ describe("OcpiService", () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: EmspService,
+          useValue: mockEmspService,
         },
       ],
     }).compile();

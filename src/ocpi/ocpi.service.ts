@@ -1,15 +1,18 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { PartyContext } from "../common/decorators/current-party.decorator";
-import axios from "axios";
 import { Subject } from "rxjs";
+import { EmspService } from "../emsp/emsp.service";
 
 @Injectable()
 export class OcpiService {
   private readonly logger = new Logger(OcpiService.name);
   public readonly commands$ = new Subject<{ type: string; data: any }>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly emspService: EmspService,
+  ) {}
 
   // Response wrapper according to OCPI specification
   wrapResponse(data: any, statusCode = 1000, message = "Success") {
@@ -19,58 +22,6 @@ export class OcpiService {
       status_message: message,
       timeStamp: new Date().toISOString(),
     };
-  }
-
-  // Helper method to automatically forward CPO updates to all registered EMSP tenants
-  private async forwardToEmsps(
-    method: "POST" | "PUT" | "PATCH",
-    subPath: string,
-    payload: any,
-  ) {
-    try {
-      const emspParties = await this.prisma.party.findMany({
-        where: { role: "EMSP" },
-        include: { credential: true },
-      });
-
-      for (const emsp of emspParties) {
-        if (emsp.credential && emsp.credential.url && emsp.credential.tokenB) {
-          const url = `${emsp.credential.url}/ocpi/2.2.1/${subPath}`;
-          const headers = {
-            Authorization: `bearer ${emsp.credential.tokenB}`, // Use Token B provided by EMSP
-            "Content-Type": "application/json; charset=utf-8",
-            "OCPI-to-party-id": emsp.partyId,
-            "OCPI-to-country-code": emsp.countryCode,
-            "OCPI-from-party-id": "HUB",
-            "OCPI-from-country-code": "TW",
-          };
-
-          this.logger.log(
-            `Forwarding ${method} to EMSP ${emsp.partyId} at: ${url}`,
-          );
-
-          try {
-            if (method === "PUT") {
-              await axios.put(url, payload, { headers });
-            } else if (method === "PATCH") {
-              await axios.patch(url, payload, { headers });
-            } else if (method === "POST") {
-              await axios.post(url, payload, { headers });
-            }
-          } catch (err: any) {
-            this.logger.error(
-              `Failed to forward to EMSP ${emsp.partyId}: ${
-                err.response?.data
-                  ? JSON.stringify(err.response.data)
-                  : err.message
-              }`,
-            );
-          }
-        }
-      }
-    } catch (err: any) {
-      this.logger.error(`Error in forwardToEmsps utility: ${err.message}`);
-    }
   }
 
   // Handle incoming PUT Location from CPO
@@ -144,10 +95,13 @@ export class OcpiService {
     }
 
     // Forward the location sync call to EMSP
-    await this.forwardToEmsps(
+    await this.emspService.forwardToEmsps(
       "PUT",
       `locations/${countryCode}/${partyId}/${locationId}`,
       payload,
+      undefined,
+      partyId,
+      countryCode,
     );
 
     return this.wrapResponse(null, 1000, "Location successfully updated");
@@ -188,10 +142,13 @@ export class OcpiService {
     });
 
     // Forward the EVSE status update patch to EMSP
-    await this.forwardToEmsps(
+    await this.emspService.forwardToEmsps(
       "PATCH",
       `locations/${countryCode}/${partyId}/${locationId}/${evseUid}`,
       payload,
+      undefined,
+      partyId,
+      countryCode,
     );
 
     return this.wrapResponse(null, 1000, "EVSE status successfully updated");
@@ -208,10 +165,13 @@ export class OcpiService {
     this.logger.log(`[Tenant: ${party.id}] Received PUT Tariff: ${tariffId}`);
 
     // Forward the Tariff sync to EMSP
-    await this.forwardToEmsps(
+    await this.emspService.forwardToEmsps(
       "PUT",
       `tariffs/${countryCode}/${partyId}/${tariffId}`,
       payload,
+      undefined,
+      partyId,
+      countryCode,
     );
 
     return this.wrapResponse(null, 1000, "Tariff successfully processed");
@@ -243,7 +203,9 @@ export class OcpiService {
           payload.emsp_id = emspParty.id;
         }
       } catch (err: any) {
-        this.logger.error(`Failed to map EMSP in handlePutSession: ${err.message}`);
+        this.logger.error(
+          `Failed to map EMSP in handlePutSession: ${err.message}`,
+        );
       }
     }
 
@@ -273,10 +235,13 @@ export class OcpiService {
     });
 
     // Forward the Session update to EMSP
-    await this.forwardToEmsps(
+    await this.emspService.forwardToEmsps(
       "PUT",
       `sessions/${countryCode}/${partyId}/${sessionId}`,
       payload,
+      undefined,
+      partyId,
+      countryCode,
     );
 
     return this.wrapResponse(null, 1000, "Session successfully updated");
@@ -309,7 +274,14 @@ export class OcpiService {
     });
 
     // Forward the CDR record to EMSP
-    await this.forwardToEmsps("POST", "cdrs", payload);
+    await this.emspService.forwardToEmsps(
+      "POST",
+      "cdrs",
+      payload,
+      undefined,
+      party.partyId,
+      party.countryCode,
+    );
 
     return this.wrapResponse(null, 1000, "CDR successfully created");
   }
@@ -320,7 +292,13 @@ export class OcpiService {
       `[Tenant: ${party.id}] Received START_SESSION Command from EMSP: ${JSON.stringify(payload, null, 2)}`,
     );
 
-    this.commands$.next({ type: "START_SESSION", data: payload });
+    this.commands$.next({
+      type: "START_SESSION",
+      data: {
+        ...payload,
+        emsp_id: party.id,
+      },
+    });
 
     return this.wrapResponse(
       {
@@ -350,47 +328,6 @@ export class OcpiService {
 
   // Synchronize/Forward all locations in the DB to all enabled EMSPs on-demand
   async syncAllLocations() {
-    this.logger.log("Triggered on-demand synchronization of all locations to EMSPs");
-    try {
-      const locations = await this.prisma.location.findMany({
-        include: {
-          party: true,
-          evses: true,
-        },
-      });
-
-      let count = 0;
-      for (const loc of locations) {
-        const party = loc.party; // CPO Party
-        if (!party) continue;
-
-        // Clean EVSEs list to match OCPI structure in forward payload
-        const cleanedEvses = loc.evses.map((e) => {
-          const raw = e.rawJson as any;
-          return {
-            uid: e.uid,
-            evse_id: e.id || raw?.evse_id || e.uid,
-            status: e.status,
-            capabilities: raw?.capabilities || ["REMOTE_START_STOP_ALLOWED"],
-            connectors: raw?.connectors || [],
-          };
-        });
-
-        const rawLoc = loc.rawJson as any;
-        const payload = {
-          ...rawLoc,
-          evses: cleanedEvses,
-        };
-
-        const subPath = `locations/${party.countryCode}/${party.partyId}/${loc.id}`;
-        await this.forwardToEmsps("PUT", subPath, payload);
-        count++;
-      }
-
-      return { success: true, count };
-    } catch (err: any) {
-      this.logger.error(`Failed to sync all locations: ${err.message}`);
-      throw new Error(`Sync all locations failed: ${err.message}`);
-    }
+    return this.emspService.syncLocationsToEmsp();
   }
 }

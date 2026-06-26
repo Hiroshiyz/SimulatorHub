@@ -1,0 +1,45 @@
+name: Scheduled Merge at 2AM
+
+on:
+  schedule:
+    # ⚠️ Note: GitHub Actions schedule uses UTC time.
+    # Taipei Time (UTC+8) 02:00 AM = UTC 18:00 (previous day)
+    - cron: '0 18 * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  scheduled-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Find and Merge Approved PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Looking for pull requests targeting 'main' with label 'ready-to-merge-2am'..."
+          
+          # Fetch PR numbers targeting 'main' with the specific label
+          PR_LIST=$(gh pr list --label "ready-to-merge-2am" --base "main" --json number --jq '.[].number')
+          
+          if [ -z "$PR_LIST" ]; then
+            echo "No scheduled PRs found to merge tonight."
+            exit 0
+          fi
+
+          for PR in $PR_LIST; do
+            echo "Checking review status of PR #${PR}..."
+            REVIEW_STATUS=$(gh pr view $PR --json reviewDecision --jq '.reviewDecision')
+            
+            if [ "$REVIEW_STATUS" == "APPROVED" ]; then
+              echo "PR #${PR} is APPROVED. Performing automatic merge..."
+              gh pr merge $PR --merge --delete-branch
+              echo "PR #${PR} merged successfully!"
+            else
+              echo "⚠️ PR #${PR} has the label but is not yet APPROVED. Skipping."
+            fi
+          done

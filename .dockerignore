@@ -1,0 +1,12 @@
+.git
+node_modules
+dist
+client/node_modules
+client/dist
+public
+.env
+.env.local
+.env.production
+.env.development
+.env.staging
+coverage

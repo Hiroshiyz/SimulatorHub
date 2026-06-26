@@ -6,9 +6,10 @@ import { OcpiModule } from "./ocpi/ocpi.module";
 import { SimulatorModule } from "./simulator/simulator.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RedisModule } from "./redis/redis.module";
+import { EmspModule } from "./emsp/emsp.module";
 
 @Module({
-  imports: [PrismaModule, RedisModule, OcpiModule, SimulatorModule],
+  imports: [PrismaModule, RedisModule, EmspModule, OcpiModule, SimulatorModule],
   controllers: [],
   providers: [
     {
