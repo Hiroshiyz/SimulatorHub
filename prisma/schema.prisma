@@ -102,3 +102,22 @@ model Cdr {
   @@id([partyId, id])
   @@map("cdrs")
 }
+
+model HubRoutingRule {
+  id              String   @id @default(uuid())
+  cpoCountryCode  String   @map("cpo_country_code")
+  cpoPartyId      String   @map("cpo_party_id")
+  emspCountryCode String   @map("emsp_country_code")
+  emspPartyId     String   @map("emsp_party_id")
+  contractStatus  String   @map("contract_status") // ACTIVE, SUSPENDED, EXPIRED
+  channelStatus   String   @map("channel_status")  // PROD_ACTIVE, MOCK_TESTING, ERROR_DISABLED, DISABLED
+  emspBaseUrl     String   @map("emsp_base_url")
+  emspTokenB      String   @map("emsp_token_b")
+  routingFilters  Json     @map("routing_filters")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([cpoCountryCode, cpoPartyId, emspCountryCode, emspPartyId])
+  @@map("hub_routing_rules")
+}
+

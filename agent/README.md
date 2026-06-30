@@ -10,7 +10,7 @@
 
 大腦與子代理人的詳細規則文件分布如下：
 
-### 1.1 大腦中樞：[Orchestrator (agent.md)](file:///home/theodore/project/mock-hub/agent/agent.md)
+### 1.1 大腦中樞：[Orchestrator (agent.md)](file:///Users/yangcanbo/hub/SimulatorHub/agent/agent.md)
 * **角色**：OCPI HUB Orchestrator（中央分流大腦）。
 * **核心職責**：作為所有外部請求（Webhook、模擬器事件、管理員指令）的唯一接收點。
 * **約束條件**：
@@ -18,25 +18,32 @@
   * **快速失敗**：遇到未定義的路由時必須立即拋出錯誤拒絕，防止無效請求污染內部。
 
 ### 1.2 子代理人 (Sub-agents)
-* **[CredentialsAgent (CredentialsAgent.md)](file:///home/theodore/project/mock-hub/agent/CredentialsAgent.md) (憑證與握手代理)**：
+* **[CredentialsAgent (CredentialsAgent.md)](file:///Users/yangcanbo/hub/SimulatorHub/agent/CredentialsAgent.md) (憑證與握手代理)**：
   * 處理 CPO 與 EMSP 的連線握手（Handshake）與動態上線（Onboarding）驗證。
   * 負責產出安全的 32 字元 API Token（UUID v4 去除連字號 `-`）。
-* **[TopologyAgent (TopologyAgent.md)](file:///home/theodore/project/mock-hub/agent/TopologyAgent.md) (地圖與拓樸代理)**：
+* **[TopologyAgent (TopologyAgent.md)](file:///Users/yangcanbo/hub/SimulatorHub/agent/TopologyAgent.md) (地圖與拓樸代理)**：
   * 管理充電站點（Locations）、充電槍（EVSEs）與槍頭狀態。
   * 支援將充電站地圖同步給所有 EMSP，或指定**單一 EMSP** 進行手動資料同步。
-* **[CommandsAgent (CommandsAgent.md)](file:///home/theodore/project/mock-hub/agent/CommandsAgent.md) (指令與控制代理)**：
+* **[CommandsAgent (CommandsAgent.md)](file:///Users/yangcanbo/hub/SimulatorHub/agent/CommandsAgent.md) (指令與控制代理)**：
   * 轉發遠端啟動充電（`START_SESSION`）與停止充電（`STOP_SESSION`）指令。
   * 處理充電槍頭的預約（Reserve）與取消預約。
-* **[BillingAgent (BillingAgent.md)](file:///home/theodore/project/mock-hub/agent/BillingAgent.md) (計費與交易代理)**：
+* **[BillingAgent (BillingAgent.md)](file:///Users/yangcanbo/hub/SimulatorHub/agent/BillingAgent.md) (計費與交易代理)**：
   * 管理費率計算模板（Tariffs）、追蹤即時充電計量進程（Sessions）。
   * 處理充電結束後所開立的結帳帳單明細（CDRs）。
-* **[SimulatorAgent (SimulatorAgent.md)](file:///home/theodore/project/mock-hub/agent/SimulatorAgent.md) (模擬器代理)**：
+* **[SimulatorAgent (SimulatorAgent.md)](file:///Users/yangcanbo/hub/SimulatorHub/agent/SimulatorAgent.md) (模擬器代理)**：
   * 管理虛擬的 CPO 與 EMSP 註冊配置、批次手動同步站點資料。
   * 模擬底層充電站的各類遙測事件（站點更新、槍頭狀態變換、充電計量更新、生成計費單據 CDRs）。
 
+### 1.3 智慧分流與熔斷系統 (Smart Routing & Circuit Breaker)
+* **核心職責**：將 CPO 上報的 Roaming 數據（地圖、費率、充電計量、CDR 帳單）轉為事件驅動架構，避免直接同步造成的 HTTP 延遲與連線失敗。
+* **分流流程**：
+  * 由 [RoutingProducerService](file:///Users/yangcanbo/hub/SimulatorHub/src/ocpi/routing/routing-producer.service.ts) 查詢 Redis 緩存路由配置，經 [RoutingFilterEngine](file:///Users/yangcanbo/hub/SimulatorHub/src/ocpi/routing/filtering/filter.strategy.ts) 行為過濾。
+  * 推送工作至 BullMQ 並由 [OcpiRoutingWorker](file:///Users/yangcanbo/hub/SimulatorHub/src/ocpi/routing/routing.worker.ts) 完成異步轉發。
+  * 當連續轉發失敗 3 次，會自動將通道狀態設為 `ERROR_DISABLED` 阻斷後續流量，並於 Notion 資料庫自動建立 Incident 工單警報。
+
 ---
 
-## 2. CI/CD 與發布規範：[DevOps (DevOps.md)](file:///home/theodore/project/mock-hub/agent/DevOps.md)
+## 2. CI/CD 與發布規範：[DevOps (DevOps.md)](file:///Users/yangcanbo/hub/SimulatorHub/agent/DevOps.md)
 
 本專案實施全自動化的 CI/CD 驗證與容器化發布流程，並設有排程與即時合併機制：
 

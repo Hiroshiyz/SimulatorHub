@@ -3,6 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { PartyContext } from "../common/decorators/current-party.decorator";
 import { Subject } from "rxjs";
 import { EmspService } from "../emsp/emsp.service";
+import { RoutingProducerService } from "./routing/routing-producer.service";
 
 @Injectable()
 export class OcpiService {
@@ -12,6 +13,7 @@ export class OcpiService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emspService: EmspService,
+    private readonly routingProducerService: RoutingProducerService,
   ) {}
 
   // Response wrapper according to OCPI specification
@@ -94,14 +96,13 @@ export class OcpiService {
       }
     }
 
-    // Forward the location sync call to EMSP
-    await this.emspService.forwardToEmsps(
+    // Forward the location sync call to EMSP via event queue
+    await this.routingProducerService.enqueueForwardTask(
       "PUT",
       `locations/${countryCode}/${partyId}/${locationId}`,
       payload,
-      undefined,
-      partyId,
       countryCode,
+      partyId,
     );
 
     return this.wrapResponse(null, 1000, "Location successfully updated");
@@ -141,14 +142,13 @@ export class OcpiService {
       },
     });
 
-    // Forward the EVSE status update patch to EMSP
-    await this.emspService.forwardToEmsps(
+    // Forward the EVSE status update patch to EMSP via event queue
+    await this.routingProducerService.enqueueForwardTask(
       "PATCH",
       `locations/${countryCode}/${partyId}/${locationId}/${evseUid}`,
       payload,
-      undefined,
-      partyId,
       countryCode,
+      partyId,
     );
 
     return this.wrapResponse(null, 1000, "EVSE status successfully updated");
@@ -164,14 +164,13 @@ export class OcpiService {
   ) {
     this.logger.log(`[Tenant: ${party.id}] Received PUT Tariff: ${tariffId}`);
 
-    // Forward the Tariff sync to EMSP
-    await this.emspService.forwardToEmsps(
+    // Forward the Tariff sync to EMSP via event queue
+    await this.routingProducerService.enqueueForwardTask(
       "PUT",
       `tariffs/${countryCode}/${partyId}/${tariffId}`,
       payload,
-      undefined,
-      partyId,
       countryCode,
+      partyId,
     );
 
     return this.wrapResponse(null, 1000, "Tariff successfully processed");
@@ -234,14 +233,13 @@ export class OcpiService {
       },
     });
 
-    // Forward the Session update to EMSP
-    await this.emspService.forwardToEmsps(
+    // Forward the Session update to EMSP via event queue
+    await this.routingProducerService.enqueueForwardTask(
       "PUT",
       `sessions/${countryCode}/${partyId}/${sessionId}`,
       payload,
-      undefined,
-      partyId,
       countryCode,
+      partyId,
     );
 
     return this.wrapResponse(null, 1000, "Session successfully updated");
@@ -273,14 +271,13 @@ export class OcpiService {
       },
     });
 
-    // Forward the CDR record to EMSP
-    await this.emspService.forwardToEmsps(
+    // Forward the CDR record to EMSP via event queue
+    await this.routingProducerService.enqueueForwardTask(
       "POST",
       "cdrs",
       payload,
-      undefined,
-      party.partyId,
       party.countryCode,
+      party.partyId,
     );
 
     return this.wrapResponse(null, 1000, "CDR successfully created");

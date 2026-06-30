@@ -3,6 +3,8 @@ import { OcpiService } from "./ocpi.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { PartyContext } from "../common/decorators/current-party.decorator";
 import { EmspService } from "../emsp/emsp.service";
+import { RoutingProducerService } from "./routing/routing-producer.service";
+
 
 describe("OcpiService", () => {
   let service: OcpiService;
@@ -20,6 +22,10 @@ describe("OcpiService", () => {
     syncLocationsToEmsp: jest.fn().mockResolvedValue({ success: true, count: 0 }),
     registerEmsp: jest.fn().mockResolvedValue({}),
     getEmspStatus: jest.fn().mockResolvedValue([]),
+  };
+
+  const mockRoutingProducerService = {
+    enqueueForwardTask: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockParty: PartyContext = {
@@ -40,6 +46,10 @@ describe("OcpiService", () => {
         {
           provide: EmspService,
           useValue: mockEmspService,
+        },
+        {
+          provide: RoutingProducerService,
+          useValue: mockRoutingProducerService,
         },
       ],
     }).compile();
