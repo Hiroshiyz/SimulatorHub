@@ -13,6 +13,10 @@ export default function HubRouterPage() {
     handleAddCpo,
     handleAddEmsp,
     showToast,
+    routingRules,
+    handleAddRoutingRule,
+    handleToggleRuleStatus,
+    handleDeleteRoutingRule,
   } = useSimulator();
 
   // CPO Form State
@@ -27,6 +31,14 @@ export default function HubRouterPage() {
   const [emspName, setEmspName] = useState("");
   const [emspUrl, setEmspUrl] = useState("");
   const [emspTokenC, setEmspTokenC] = useState("");
+
+  // Routing Rule Form State
+  const [selectedRuleCpo, setSelectedRuleCpo] = useState("");
+  const [selectedRuleEmsp, setSelectedRuleEmsp] = useState("");
+  const [ruleBaseUrl, setRuleBaseUrl] = useState("");
+  const [ruleTokenB, setRuleTokenB] = useState("");
+  const [filterRegions, setFilterRegions] = useState("");
+  const [filterPowerTypes, setFilterPowerTypes] = useState("");
 
   const toggleEmspChannel = (emspId: string) => {
     setEmsps((prev) =>
@@ -436,6 +448,8 @@ export default function HubRouterPage() {
               padding: "6px 12px",
               fontSize: "12px",
               height: "32px",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
             title="重新檢測連線狀態"
           >
@@ -561,6 +575,274 @@ export default function HubRouterPage() {
               </button>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* SECTION: Routing Rules Management */}
+      <div className="card" style={{ borderLeft: "4px solid var(--accent-blue)" }}>
+        <h3 className="card-title">
+          <Layers size={18} style={{ color: "var(--accent-blue)" }} />
+          <span>路由規則與過濾分流管理 (Routing Rules & Filter Engine)</span>
+        </h3>
+        <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "-10px", marginBottom: "20px" }}>
+          建立並管理 CPO 至 EMSP 的核心路由規則。設定不同通道狀態（如 PROD_ACTIVE 或 MOCK_TESTING），並配置分流過濾器（地理區域、充電樁功率類型）進行精準轉發。
+        </p>
+
+        <div className="routing-grid">
+          {/* Form to Add Routing Rule */}
+          <div style={{ background: "rgba(255, 255, 255, 0.01)", border: "1px solid var(--glass-border)", padding: "16px", borderRadius: "10px", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <h4 style={{ fontSize: "14px", fontWeight: "bold", color: "white", marginBottom: "4px" }}>
+              建立路由規則 (Create Rule)
+            </h4>
+            
+            <div className="form-group">
+              <label>選擇 CPO 來源</label>
+              <select
+                value={selectedRuleCpo}
+                onChange={(e) => setSelectedRuleCpo(e.target.value)}
+                style={{ width: "100%", height: "34px", padding: "6px 10px", fontSize: "12.5px" }}
+              >
+                <option value="">-- 選擇 CPO --</option>
+                {cpos.map((c) => (
+                  <option key={c.id} value={`${c.countryCode}:${c.partyId}`}>
+                    {c.name} ({c.countryCode}-{c.partyId})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>選擇目標 eMSP</label>
+              <select
+                value={selectedRuleEmsp}
+                onChange={(e) => {
+                  const emspKey = e.target.value;
+                  setSelectedRuleEmsp(emspKey);
+                  const matched = emsps.find(item => `${item.countryCode}:${item.partyId}` === emspKey);
+                  if (matched) {
+                    setRuleBaseUrl(matched.url || "");
+                    setRuleTokenB(matched.tokenC || "");
+                  }
+                }}
+                style={{ width: "100%", height: "34px", padding: "6px 10px", fontSize: "12.5px" }}
+              >
+                <option value="">-- 選擇 eMSP --</option>
+                {emsps.map((e) => (
+                  <option key={e.id} value={`${e.countryCode}:${e.partyId}`}>
+                    {e.name} ({e.countryCode}-{e.partyId})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>轉發目標網址 (EMSP URL)</label>
+              <input
+                type="text"
+                value={ruleBaseUrl}
+                onChange={(e) => setRuleBaseUrl(e.target.value)}
+                placeholder="例如: http://localhost:5053"
+                style={{ height: "34px", padding: "6px 10px", fontSize: "12.5px" }}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>對接 Token (Token B)</label>
+              <input
+                type="text"
+                value={ruleTokenB}
+                onChange={(e) => setRuleTokenB(e.target.value)}
+                placeholder="轉發至該 EMSP 時所攜帶的驗證金鑰"
+                style={{ height: "34px", padding: "6px 10px", fontSize: "12.5px" }}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>過濾條件: 地理區域 (Regions, 逗號分隔)</label>
+              <input
+                type="text"
+                value={filterRegions}
+                onChange={(e) => setFilterRegions(e.target.value)}
+                placeholder="例如: 桃園市, 台北市"
+                style={{ height: "34px", padding: "6px 10px", fontSize: "12.5px" }}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>過濾條件: 功率類型 (Power Types, 逗號分隔)</label>
+              <input
+                type="text"
+                value={filterPowerTypes}
+                onChange={(e) => setFilterPowerTypes(e.target.value)}
+                placeholder="例如: DC, AC_3_PHASE"
+                style={{ height: "34px", padding: "6px 10px", fontSize: "12.5px" }}
+              />
+            </div>
+
+            <button
+              onClick={async () => {
+                if (!selectedRuleCpo || !selectedRuleEmsp || !ruleBaseUrl || !ruleTokenB) {
+                  showToast("請填寫所有必要路由欄位！", "warning");
+                  return;
+                }
+                const [cpoCountry, cpoParty] = selectedRuleCpo.split(":");
+                const [emspCountry, emspParty] = selectedRuleEmsp.split(":");
+
+                const routingFilters: any = {};
+                if (filterRegions.trim()) {
+                  routingFilters.geographic_regions = filterRegions.split(",").map(r => r.trim()).filter(Boolean);
+                }
+                if (filterPowerTypes.trim()) {
+                  routingFilters.power_types = filterPowerTypes.split(",").map(p => p.trim()).filter(Boolean);
+                }
+
+                const res = await handleAddRoutingRule({
+                  cpoCountryCode: cpoCountry,
+                  cpoPartyId: cpoParty,
+                  emspCountryCode: emspCountry,
+                  emspPartyId: emspParty,
+                  emspBaseUrl: ruleBaseUrl,
+                  emspTokenB: ruleTokenB,
+                  routingFilters,
+                  channelStatus: "PROD_ACTIVE"
+                });
+
+                if (res.success) {
+                  showToast("路由規則建立/更新成功！", "success");
+                  setSelectedRuleCpo("");
+                  setSelectedRuleEmsp("");
+                  setRuleBaseUrl("");
+                  setRuleTokenB("");
+                  setFilterRegions("");
+                  setFilterPowerTypes("");
+                } else {
+                  showToast(`建立失敗: ${res.error}`, "error");
+                }
+              }}
+              className="button"
+              style={{ height: "36px", fontSize: "12px", background: "linear-gradient(135deg, var(--accent-blue), #0284c7)" }}
+            >
+              建立路由規則
+            </button>
+          </div>
+
+          {/* List of Routing Rules */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <h4 style={{ fontSize: "14px", fontWeight: "bold", color: "white", margin: 0 }}>
+              現有路由規則清單 ({routingRules.length} 筆)
+            </h4>
+
+            {routingRules.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px", border: "1px dashed var(--glass-border)", borderRadius: "8px", color: "var(--text-muted)", fontSize: "13px" }}>
+                目前無配置路由規則。請在左側表單建立路由規則。
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxHeight: "600px", overflowY: "auto" }}>
+                {routingRules.map((rule) => {
+                  const hasRegions = rule.routingFilters?.geographic_regions?.length > 0;
+                  const hasPowerTypes = rule.routingFilters?.power_types?.length > 0;
+
+                  return (
+                    <div
+                      key={rule.id}
+                      style={{
+                        background: "rgba(255, 255, 255, 0.02)",
+                        border: "1px solid var(--glass-border)",
+                        borderRadius: "8px",
+                        padding: "16px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "12px"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ color: "var(--accent-red)", fontWeight: "bold", fontFamily: "var(--font-mono)" }}>
+                              {rule.cpoCountryCode}-{rule.cpoPartyId} (CPO)
+                            </span>
+                            <span style={{ color: "var(--text-muted)" }}>➔</span>
+                            <span style={{ color: "var(--accent-blue)", fontWeight: "bold", fontFamily: "var(--font-mono)" }}>
+                              {rule.emspCountryCode}-{rule.emspPartyId} (eMSP)
+                            </span>
+                          </div>
+                          <div style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginTop: "4px" }}>
+                            URL: {rule.emspBaseUrl} | Token: {rule.emspTokenB.substring(0, 15)}...
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          {/* Channel Status toggle button */}
+                          <span
+                            onClick={() => handleToggleRuleStatus(rule.id, rule.channelStatus)}
+                            className={`badge ${rule.channelStatus === "PROD_ACTIVE" ? "success" : rule.channelStatus === "MOCK_TESTING" ? "warning" : "error"}`}
+                            style={{ cursor: "pointer", userSelect: "none", fontSize: "11px" }}
+                            title="點擊切換通道狀態 (PROD_ACTIVE -> MOCK_TESTING -> DISABLED)"
+                          >
+                            通道：{rule.channelStatus}
+                          </span>
+
+                          <button
+                            onClick={async () => {
+                              if (confirm("確認刪除此路由規則？")) {
+                                const res = await handleDeleteRoutingRule(rule.id);
+                                if (res.success) {
+                                  showToast("已成功刪除路由規則", "success");
+                                } else {
+                                  showToast("刪除失敗", "error");
+                                }
+                              }
+                            }}
+                            className="button button-secondary"
+                            style={{ padding: "4px 8px", fontSize: "10px", height: "22px", color: "var(--accent-red)", borderColor: "rgba(239, 68, 68, 0.2)" }}
+                          >
+                            刪除
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Filters display */}
+                      <div style={{ background: "rgba(0,0,0,0.15)", padding: "10px", borderRadius: "6px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "11.5px", color: "var(--text-secondary)", fontWeight: 500 }}>
+                            ⚙️ 過濾條件策略 (Filters)
+                          </span>
+                        </div>
+
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "4px" }}>
+                          <div style={{ fontSize: "12px" }}>
+                            <span style={{ color: "var(--text-muted)" }}>地區過濾:</span>{" "}
+                            {hasRegions ? (
+                              rule.routingFilters.geographic_regions.map((reg: string) => (
+                                <span key={reg} style={{ background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.2)", color: "var(--accent-blue)", padding: "1px 6px", borderRadius: "4px", fontSize: "11px", marginRight: "4px" }}>
+                                  {reg}
+                                </span>
+                              ))
+                            ) : (
+                              <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>無限制 (全部轉發)</span>
+                            )}
+                          </div>
+
+                          <div style={{ fontSize: "12px" }}>
+                            <span style={{ color: "var(--text-muted)" }}>功率過濾:</span>{" "}
+                            {hasPowerTypes ? (
+                              rule.routingFilters.power_types.map((pow: string) => (
+                                <span key={pow} style={{ background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.2)", color: "var(--accent-green)", padding: "1px 6px", borderRadius: "4px", fontSize: "11px", marginRight: "4px" }}>
+                                  {pow}
+                                </span>
+                              ))
+                            ) : (
+                              <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>無限制 (全部轉發)</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -12,6 +12,7 @@ import { OcpiService } from "../ocpi/ocpi.service";
 import { Observable } from "rxjs";
 import { map } from "rxjs/operators";
 import { EmspService } from "../emsp/emsp.service";
+import { RoutingCacheService } from "../ocpi/routing/routing-cache.service";
 
 @Injectable()
 export class SimulatorService implements OnModuleInit {
@@ -21,6 +22,7 @@ export class SimulatorService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly ocpiService: OcpiService,
     private readonly emspService: EmspService,
+    private readonly routingCacheService: RoutingCacheService,
   ) {}
 
   // Helper to dynamically get headers & base URL for a given CPO party
@@ -447,5 +449,96 @@ export class SimulatorService implements OnModuleInit {
         rawJson: payload,
       },
     });
+  }
+
+  // --- Routing Rules Management ---
+
+  async getRoutingRules() {
+    return this.prisma.hubRoutingRule.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async createOrUpdateRoutingRule(data: {
+    cpoCountryCode: string;
+    cpoPartyId: string;
+    emspCountryCode: string;
+    emspPartyId: string;
+    contractStatus?: string;
+    channelStatus?: string;
+    emspBaseUrl: string;
+    emspTokenB: string;
+    routingFilters?: any;
+  }) {
+    const cpoCountryCode = data.cpoCountryCode.toUpperCase();
+    const cpoPartyId = data.cpoPartyId.toUpperCase();
+    const emspCountryCode = data.emspCountryCode.toUpperCase();
+    const emspPartyId = data.emspPartyId.toUpperCase();
+
+    const rule = await this.prisma.hubRoutingRule.upsert({
+      where: {
+        cpoCountryCode_cpoPartyId_emspCountryCode_emspPartyId: {
+          cpoCountryCode,
+          cpoPartyId,
+          emspCountryCode,
+          emspPartyId,
+        },
+      },
+      update: {
+        contractStatus: data.contractStatus || "ACTIVE",
+        channelStatus: data.channelStatus || "PROD_ACTIVE",
+        emspBaseUrl: data.emspBaseUrl,
+        emspTokenB: data.emspTokenB,
+        routingFilters: data.routingFilters || {},
+      },
+      create: {
+        cpoCountryCode,
+        cpoPartyId,
+        emspCountryCode,
+        emspPartyId,
+        contractStatus: data.contractStatus || "ACTIVE",
+        channelStatus: data.channelStatus || "PROD_ACTIVE",
+        emspBaseUrl: data.emspBaseUrl,
+        emspTokenB: data.emspTokenB,
+        routingFilters: data.routingFilters || {},
+      },
+    });
+
+    await this.routingCacheService.syncRuleToRedis(rule);
+    return rule;
+  }
+
+  async updateRoutingRuleStatus(id: string, channelStatus: string) {
+    const rule = await this.prisma.hubRoutingRule.update({
+      where: { id },
+      data: { channelStatus },
+    });
+
+    await this.routingCacheService.syncRuleToRedis(rule);
+    return rule;
+  }
+
+  async updateRoutingRuleFilters(id: string, routingFilters: any) {
+    const rule = await this.prisma.hubRoutingRule.update({
+      where: { id },
+      data: { routingFilters: routingFilters || {} },
+    });
+
+    await this.routingCacheService.syncRuleToRedis(rule);
+    return rule;
+  }
+
+  async deleteRoutingRule(id: string) {
+    const rule = await this.prisma.hubRoutingRule.delete({
+      where: { id },
+    });
+
+    await this.routingCacheService.deleteRuleFromRedis(
+      rule.cpoCountryCode,
+      rule.cpoPartyId,
+      rule.emspCountryCode,
+      rule.emspPartyId,
+    );
+    return { success: true };
   }
 }

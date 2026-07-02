@@ -3,6 +3,7 @@ import {
   Post,
   Put,
   Patch,
+  Delete,
   Get,
   Body,
   Param,
@@ -247,5 +248,38 @@ export class SimulatorController {
   ) {
     await this.simulatorService.saveEmspCdr(emspPartyId, body);
     return { status_code: 1000, status_message: "Success" };
+  }
+
+  // --- Routing Rules APIs ---
+
+  @Get("routing-rules")
+  async getRoutingRules() {
+    return this.simulatorService.getRoutingRules();
+  }
+
+  @Post("routing-rules")
+  async createOrUpdateRoutingRule(@Body() body: any) {
+    return this.simulatorService.createOrUpdateRoutingRule(body);
+  }
+
+  @Patch("routing-rules/:id/status")
+  async updateRoutingRuleStatus(
+    @Param("id") id: string,
+    @Body("channelStatus") channelStatus: string,
+  ) {
+    return this.simulatorService.updateRoutingRuleStatus(id, channelStatus);
+  }
+
+  @Patch("routing-rules/:id/filters")
+  async updateRoutingRuleFilters(
+    @Param("id") id: string,
+    @Body("routingFilters") routingFilters: any,
+  ) {
+    return this.simulatorService.updateRoutingRuleFilters(id, routingFilters);
+  }
+
+  @Delete("routing-rules/:id")
+  async deleteRoutingRule(@Param("id") id: string) {
+    return this.simulatorService.deleteRoutingRule(id);
   }
 }

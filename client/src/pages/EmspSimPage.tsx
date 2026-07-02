@@ -155,7 +155,7 @@ export default function EmspSimPage() {
               fetchDatabaseState();
             }}
             className="button button-secondary"
-            style={{ display: "flex", alignItems: "center", gap: "6px", height: "32px", fontSize: "12px", padding: "0 12px" }}
+            style={{ display: "flex", alignItems: "center", gap: "6px", height: "32px", fontSize: "12px", padding: "0 12px", whiteSpace: "nowrap", flexShrink: 0 }}
           >
             <RefreshCw size={13} />
             <span>重新整理</span>
@@ -189,7 +189,7 @@ export default function EmspSimPage() {
           </div>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+        <div className="emsp-grid">
           {/* Left: Remote Commands Card */}
           <div className="card" style={{ borderLeft: "4px solid var(--accent-purple)", display: "flex", flexDirection: "column", gap: "16px" }}>
             <div>
@@ -274,7 +274,7 @@ export default function EmspSimPage() {
                   <button
                     onClick={() => handleSendCommandClick("START_SESSION")}
                     className="button"
-                    style={{ flex: 1, height: "36px", fontSize: "12px", background: "linear-gradient(135deg, var(--accent-purple), #7c3aed)" }}
+                    style={{ flex: 1, height: "36px", fontSize: "12px", background: "linear-gradient(135deg, var(--accent-purple), #7c3aed)", whiteSpace: "nowrap" }}
                     disabled={!selectedEvseUid}
                   >
                     <Zap size={13} style={{ marginRight: "4px" }} />
@@ -283,7 +283,7 @@ export default function EmspSimPage() {
                   <button
                     onClick={() => handleSendCommandClick("STOP_SESSION")}
                     className="button button-secondary"
-                    style={{ flex: 1, height: "36px", fontSize: "12px", color: "var(--accent-red)", borderColor: "rgba(239, 68, 68, 0.2)" }}
+                    style={{ flex: 1, height: "36px", fontSize: "12px", color: "var(--accent-red)", borderColor: "rgba(239, 68, 68, 0.2)", whiteSpace: "nowrap" }}
                     disabled={!selectedEvseUid}
                   >
                     遠端停止 (STOP)

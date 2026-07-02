@@ -13,10 +13,10 @@ import HubRouterPage from "./HubRouterPage";
 // import AutoChargePage from "./AutoChargePage";
 
 export default function CpoDashboard() {
-  const { activeTab } = useSimulator();
+  const { activeTab, terminalExpanded } = useSimulator();
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${!terminalExpanded ? "terminal-collapsed" : ""}`}>
       {/* Sidebar Navigation */}
       <Sidebar />
 

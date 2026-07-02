@@ -376,7 +376,7 @@ export default function CpoSimPage() {
               </div>
 
               {/* Simulated Charging Scenarios */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              <div className="scenario-grid">
                 
                 {/* Scenario A: RFID Swipe */}
                 <div style={{

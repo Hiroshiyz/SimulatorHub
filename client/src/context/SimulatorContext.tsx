@@ -98,7 +98,7 @@ interface SimulatorContextType {
   sendRequest: (
     action: string,
     endpoint: string,
-    method: "POST" | "PUT" | "PATCH",
+    method: "POST" | "PUT" | "PATCH" | "DELETE",
     bodyObj?: unknown,
     hasForwarding?: boolean,
   ) => Promise<{ success: boolean; data?: unknown; error?: string }>;
@@ -170,6 +170,14 @@ interface SimulatorContextType {
   triggerManualCdrSend: () => Promise<void>;
   handleAddAutoCharge: (e: React.FormEvent) => void;
   terminalBodyRef: React.RefObject<HTMLDivElement | null>;
+
+  // Routing Rules state and functions
+  routingRules: any[];
+  fetchRoutingRules: () => Promise<void>;
+  handleAddRoutingRule: (data: any) => Promise<{ success: boolean; error?: string }>;
+  handleToggleRuleStatus: (id: string, currentStatus: string) => Promise<{ success: boolean; error?: string }>;
+  handleUpdateRuleFilters: (id: string, filters: any) => Promise<{ success: boolean; error?: string }>;
+  handleDeleteRoutingRule: (id: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const INITIAL_AUTOCHARGE_MAPPINGS: AutoChargeMapping[] = [
@@ -270,6 +278,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
   // Phase 2 states
   const [emsps, setEmsps] = useState<EmspChannel[]>([]);
   const [cpos, setCpos] = useState<CpoTenant[]>([]);
+  const [routingRules, setRoutingRules] = useState<any[]>([]);
   const [autoCharges, setAutoCharges] = useState<AutoChargeMapping[]>(
     INITIAL_AUTOCHARGE_MAPPINGS,
   );
@@ -341,6 +350,30 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     emspsRef.current = emsps;
   }, [emsps]);
 
+  // Synchronize selection state with loaded locations database
+  useEffect(() => {
+    if (locations.length > 0) {
+      const isLocValid = locations.some((l) => l.id === selectedLocationId);
+      if (!isLocValid) {
+        const firstLoc = locations[0];
+        setSelectedLocationId(firstLoc.id);
+        if (firstLoc.evses && firstLoc.evses.length > 0) {
+          setSelectedEvseUid(firstLoc.evses[0].uid);
+        } else {
+          setSelectedEvseUid(null);
+        }
+      } else {
+        const currentLoc = locations.find((l) => l.id === selectedLocationId);
+        const isEvseValid = currentLoc?.evses?.some((e) => e.uid === selectedEvseUid);
+        if (!isEvseValid && currentLoc?.evses && currentLoc.evses.length > 0) {
+          setSelectedEvseUid(currentLoc.evses[0].uid);
+        }
+      }
+    } else {
+      setSelectedEvseUid(null);
+    }
+  }, [locations, selectedLocationId, selectedEvseUid]);
+
   const getLocCpoInfo = (locId: string) => {
     const loc = locationsRef.current.find((l) => l.id === locId);
     if (loc && loc.party) {
@@ -374,14 +407,15 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     setLogs((prev) => [...prev, newEntry]);
   };
 
-  // Fetch all databases (locations, sessions, CDRs, CPOs) from simulator backend
+  // Fetch all databases (locations, sessions, CDRs, CPOs, routing rules) from simulator backend
   const fetchDatabaseState = async () => {
     try {
-      const [locRes, sessRes, cdrRes, cpoRes] = await Promise.all([
+      const [locRes, sessRes, cdrRes, cpoRes, ruleRes] = await Promise.all([
         fetch("/simulator/locations"),
         fetch("/simulator/sessions"),
         fetch("/simulator/cdrs"),
         fetch("/simulator/cpos"),
+        fetch("/simulator/routing-rules"),
       ]);
 
       if (locRes.ok) {
@@ -402,6 +436,10 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       if (cpoRes.ok) {
         const cpoData = await cpoRes.json();
         setCpos(cpoData);
+      }
+      if (ruleRes.ok) {
+        const ruleData = await ruleRes.json();
+        setRoutingRules(ruleData);
       }
     } catch (err) {
       console.error("Failed to query database state:", err);
@@ -522,7 +560,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
   const sendRequest = async (
     action: string,
     endpoint: string,
-    method: "POST" | "PUT" | "PATCH",
+    method: "POST" | "PUT" | "PATCH" | "DELETE",
     bodyObj?: unknown,
     hasForwarding = true,
   ) => {
@@ -805,6 +843,103 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     );
     const dataObj = res.data as { count?: number } | undefined;
     return { success: res.success, count: dataObj?.count || 0 };
+  };
+
+  const fetchRoutingRules = async () => {
+    try {
+      const res = await fetch("/simulator/routing-rules");
+      if (res.ok) {
+        const data = await res.json();
+        setRoutingRules(data);
+      }
+    } catch (err) {
+      console.error("Failed to query routing rules:", err);
+    }
+  };
+
+  const handleAddRoutingRule = async (data: any) => {
+    addLog(
+      "SYSTEM",
+      "ADD_ROUTING_RULE",
+      `在 HUB 新增路由規則: CPO [${data.cpoCountryCode}-${data.cpoPartyId}] ➔ eMSP [${data.emspCountryCode}-${data.emspPartyId}]`,
+      "info",
+      data,
+    );
+    const res = await sendRequest(
+      `Add Routing Rule`,
+      "/simulator/routing-rules",
+      "POST",
+      data,
+      false,
+    );
+    if (res.success) {
+      await fetchRoutingRules();
+    }
+    return { success: res.success, error: res.error };
+  };
+
+  const handleToggleRuleStatus = async (id: string, currentStatus: string) => {
+    const nextStatus = currentStatus === "PROD_ACTIVE" ? "MOCK_TESTING" : currentStatus === "MOCK_TESTING" ? "DISABLED" : "PROD_ACTIVE";
+    addLog(
+      "SYSTEM",
+      "TOGGLE_RULE_STATUS",
+      `更新路由規則狀態為: ${nextStatus}`,
+      "info",
+      { id, nextStatus }
+    );
+    const res = await sendRequest(
+      `Toggle Rule Status`,
+      `/simulator/routing-rules/${id}/status`,
+      "PATCH",
+      { channelStatus: nextStatus },
+      false,
+    );
+    if (res.success) {
+      await fetchRoutingRules();
+    }
+    return { success: res.success, error: res.error };
+  };
+
+  const handleUpdateRuleFilters = async (id: string, filters: any) => {
+    addLog(
+      "SYSTEM",
+      "UPDATE_RULE_FILTERS",
+      `更新路由規則過濾條件`,
+      "info",
+      { id, filters }
+    );
+    const res = await sendRequest(
+      `Update Rule Filters`,
+      `/simulator/routing-rules/${id}/filters`,
+      "PATCH",
+      { routingFilters: filters },
+      false,
+    );
+    if (res.success) {
+      await fetchRoutingRules();
+    }
+    return { success: res.success, error: res.error };
+  };
+
+  const handleDeleteRoutingRule = async (id: string) => {
+    addLog(
+      "SYSTEM",
+      "DELETE_ROUTING_RULE",
+      `刪除路由規則`,
+      "warning",
+      { id }
+    );
+    const res = await sendRequest(
+      `Delete Routing Rule`,
+      `/simulator/routing-rules/${id}`,
+      "DELETE",
+      undefined,
+      false,
+    );
+    if (res.success) {
+      await fetchRoutingRules();
+    }
+    return { success: res.success, error: res.error };
   };
 
   const handleSyncLocationsToSpecificEmsp = async (
@@ -1632,6 +1767,14 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         toasts,
         showToast,
         removeToast,
+
+        // Routing Rules exports
+        routingRules,
+        fetchRoutingRules,
+        handleAddRoutingRule,
+        handleToggleRuleStatus,
+        handleUpdateRuleFilters,
+        handleDeleteRoutingRule,
       }}
     >
       {children}

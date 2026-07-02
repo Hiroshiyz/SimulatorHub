@@ -3,6 +3,7 @@ import { SimulatorService } from "./simulator.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { OcpiService } from "../ocpi/ocpi.service";
 import { EmspService } from "../emsp/emsp.service";
+import { RoutingCacheService } from "../ocpi/routing/routing-cache.service";
 import axios from "axios";
 
 jest.mock("axios");
@@ -46,6 +47,13 @@ describe("SimulatorService", () => {
             registerEmsp: jest.fn().mockResolvedValue({}),
             getEmspStatus: jest.fn().mockResolvedValue([]),
             syncLocationsToEmsp: jest.fn().mockResolvedValue({ success: true, count: 0 }),
+          },
+        },
+        {
+          provide: RoutingCacheService,
+          useValue: {
+            syncRuleToRedis: jest.fn().mockResolvedValue(undefined),
+            deleteRuleFromRedis: jest.fn().mockResolvedValue(undefined),
           },
         },
       ],
