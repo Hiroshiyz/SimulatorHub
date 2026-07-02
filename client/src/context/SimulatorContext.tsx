@@ -469,6 +469,12 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       console.error("Failed to query database state:", err);
     }
   };
+  // Ref to hold latest routing rules to avoid stale closures in intervals
+  const routingRulesRef = useRef<HubRoutingRule[]>([]);
+  useEffect(() => {
+    routingRulesRef.current = routingRules;
+  }, [routingRules]);
+
   // Check EMSP connectivity health and latency
   const fetchEmspStatus = async () => {
     try {
@@ -491,11 +497,13 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
                 e.partyId === backendEmsp.partyId &&
                 e.countryCode === backendEmsp.countryCode,
             );
-            const rule = routingRules.find(
+            
+            const rule = routingRulesRef.current.find(
               (r) =>
                 r.emspCountryCode.toUpperCase() === backendEmsp.countryCode.toUpperCase() &&
                 r.emspPartyId.toUpperCase() === backendEmsp.partyId.toUpperCase(),
             );
+            
             const active = rule
               ? (rule.channelStatus === "PROD_ACTIVE" || rule.channelStatus === "MOCK_TESTING")
               : (existing ? existing.active : true);

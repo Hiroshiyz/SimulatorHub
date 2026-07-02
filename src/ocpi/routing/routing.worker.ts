@@ -129,7 +129,7 @@ export class OcpiRoutingWorker extends WorkerHost {
         this.logger.log(`Circuit Breaker: Synchronized cache for ${emspKey}`);
 
         // 3. Notion Alert
-        await this.createNotionIncident(job.id || `JOB-${Date.now()}`, emspKey, targetUrl, error.message);
+        await this.createNotionIncident(job.id || `JOB-${Date.now()}`, emspKey, targetUrl, errorMsg);
       } catch (err: any) {
         this.logger.error(`Error executing circuit breaker logic: ${err.message}`, err.stack);
       }

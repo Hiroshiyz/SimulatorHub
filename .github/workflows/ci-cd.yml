@@ -38,6 +38,12 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
+      - name: Configure npm network robustness
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+
       - name: Install client dependencies
         run: npm ci --prefix client
 
