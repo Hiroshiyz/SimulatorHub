@@ -40,12 +40,20 @@
    ```bash
    cp .env.example .env
    ```
-2. **安裝專案依賴項**（根目錄與 client 目錄）：
+2. **生成prisma client**：
+   ```bash
+   # 根目錄
+   npm run db:generate #讓prisma 生成client 
+   npm run db:migrate #讓prisma 同步db
+   npm run db:seed #生成初始模擬數據
+   npm run db:studio #視覺化資料庫
+   ```
+3. **安裝專案依賴項**（根目錄與 client 目錄）：
    ```bash
    npm install
    npm install --prefix client
    ```
-3. **本地開發編譯與啟動**（需先啟動本地 Postgres 與 Redis）：
+4. **本地開發編譯與啟動**（需先啟動本地 Postgres 與 Redis）：
    ```bash
    # 啟動開發伺服器
    npm run start:dev
@@ -101,12 +109,20 @@ This project is an **OCPI 2.2.1 Charging Network HUB Simulator** built on **Nest
    ```bash
    cp .env.example .env
    ```
-2. **Install Dependencies** (root and client):
+2. **Generate Prisma Client**:
+   ```bash
+   # Root directory
+   npm run db:generate # Generate Prisma client
+   npm run db:migrate # Run Prisma database migrations
+   npm run db:seed # Seed initial mock data
+   npm run db:studio # Visualize database using Prisma Studio
+   ```
+3. **Install Dependencies** (root and client):
    ```bash
    npm install
    npm install --prefix client
    ```
-3. **Run Dev Environment Locally** (Postgres and Redis must be running):
+4. **Run Dev Environment Locally** (Postgres and Redis must be running):
    ```bash
    # Start the NestJS backend
    npm run start:dev
@@ -162,17 +178,25 @@ npm run test:cov
    ```bash
    cp .env.example .env
    ```
-2. **依存関係의インストール** (ルートおよびクライアント):
+2. **Prisma クライアントの生成**:
+   ```bash
+   # ルートディレクトリ
+   npm run db:generate # Prisma クライアントを生成
+   npm run db:migrate # データベースのマイグレーションを実行
+   npm run db:seed # 初期シミュレーションデータを投入
+   npm run db:studio # データベースを視覚化（Prisma Studio）
+   ```
+3. **プロジェクト依存関係のインストール** (ルートおよびクライアントディレクトリ):
    ```bash
    npm install
    npm install --prefix client
    ```
-3. **ローカル開発環境の起動** (Postgres および Redis の起動が必要):
+4. **ローカル開発環境のビルドと起動** (ローカルの Postgres と Redis を事前に起動させておく必要があります):
    ```bash
-   # バックエンド (NestJS) の起動
+   # 開発用サーバーの起動
    npm run start:dev
    
-   # フロントエンド (React) クライアントの起動
+   # React 管理画面の起動
    npm run client:dev
    ```
 
@@ -223,17 +247,25 @@ npm run test:cov
    ```bash
    cp .env.example .env
    ```
-2. **종속성 설치** (루트 및 클라이언트):
+2. **Prisma 클라이언트 생성**:
+   ```bash
+   # 루트 디렉토리
+   npm run db:generate # Prisma 클라이언트 생성
+   npm run db:migrate # 데이터베이스 마이그레이션 실행
+   npm run db:seed # 초기 시뮬레이션 시드 데이터 주입
+   npm run db:studio # 데이터베이스 시각화 (Prisma Studio)
+   ```
+3. **프로젝트 종속성 설치** (루트 및 클라이언트 디렉토리):
    ```bash
    npm install
    npm install --prefix client
    ```
-3. **로컬 개발 서버 실행** (Postgres 및 Redis 실행 필요):
+4. **로컬 개발 서버 빌드 및 실행** (Postgres 및 Redis 실행 필요):
    ```bash
-   # NestJS 백엔드 실행
+   # 백엔드 개발 서버 실행
    npm run start:dev
    
-   # React 프론트엔드 클라이언트 실행
+   # React 관리 대시보드 실행
    npm run client:dev
    ```
 
