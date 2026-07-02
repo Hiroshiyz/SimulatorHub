@@ -59,8 +59,9 @@ export class OcpiRoutingWorker extends WorkerHost {
   }
 
   @OnWorkerEvent("failed")
-  async onFailed(job: Job<any>, error: Error) {
-    this.logger.error(`Job ${job.id} failed: ${error.message}`);
+  async onFailed(job: Job<any>, error: any) {
+    const errorMsg = error?.message || (typeof error === "object" ? JSON.stringify(error) : String(error));
+    this.logger.error(`Job ${job.id} failed: ${errorMsg}`, error?.stack);
 
     // If job has failed after all 3 retries
     const maxAttempts = job.opts.attempts || 3;
@@ -164,7 +165,7 @@ export class OcpiRoutingWorker extends WorkerHost {
             },
           ],
         },
-        "Target URL": {
+        "targetURL": {
           url: targetUrl,
         },
         Status: {
@@ -181,7 +182,7 @@ export class OcpiRoutingWorker extends WorkerHost {
             },
           ],
         },
-        Timestamp: {
+        TimeStamp: {
           date: {
             start: new Date().toISOString(),
           },

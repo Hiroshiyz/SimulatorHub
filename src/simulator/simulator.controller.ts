@@ -282,4 +282,13 @@ export class SimulatorController {
   async deleteRoutingRule(@Param("id") id: string) {
     return this.simulatorService.deleteRoutingRule(id);
   }
+
+  @Patch("routing-rules/emsp/:countryCode/:partyId/status")
+  async toggleEmspRulesStatus(
+    @Param("countryCode") countryCode: string,
+    @Param("partyId") partyId: string,
+    @Body("channelStatus") channelStatus: string,
+  ) {
+    return this.simulatorService.updateEmspRulesStatus(countryCode, partyId, channelStatus);
+  }
 }

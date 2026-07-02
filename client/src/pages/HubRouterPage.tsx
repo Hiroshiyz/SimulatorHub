@@ -17,6 +17,8 @@ export default function HubRouterPage() {
     handleAddRoutingRule,
     handleToggleRuleStatus,
     handleDeleteRoutingRule,
+    sendRequest,
+    fetchDatabaseState,
   } = useSimulator();
 
   // CPO Form State
@@ -40,22 +42,39 @@ export default function HubRouterPage() {
   const [filterRegions, setFilterRegions] = useState("");
   const [filterPowerTypes, setFilterPowerTypes] = useState("");
 
-  const toggleEmspChannel = (emspId: string) => {
-    setEmsps((prev) =>
-      prev.map((e) => {
-        if (e.id === emspId) {
-          const nextActive = !e.active;
-          addLog(
-            "HUB",
-            "TOGGLE_EMSP_CHANNEL",
-            `eMSP 通道 [${e.name}] 已${nextActive ? "開啟" : "關閉"}(${e.countryCode}-${e.partyId})`,
-            nextActive ? "success" : "warning",
-          );
-          return { ...e, active: nextActive };
-        }
-        return e;
-      }),
+  const toggleEmspChannel = async (emspId: string) => {
+    const emsp = emsps.find((e) => e.id === emspId);
+    if (!emsp) return;
+
+    const nextActive = !emsp.active;
+    const nextStatus = nextActive ? "PROD_ACTIVE" : "DISABLED";
+
+    addLog(
+      "HUB",
+      "TOGGLE_EMSP_CHANNEL",
+      `更新 eMSP 通道 [${emsp.name}] 狀態為 ${nextStatus} (${emsp.countryCode}-${emsp.partyId})`,
+      nextActive ? "success" : "warning",
     );
+
+    const res = await sendRequest(
+      "Toggle EMSP Channel",
+      `/simulator/routing-rules/emsp/${emsp.countryCode}/${emsp.partyId}/status`,
+      "PATCH",
+      { channelStatus: nextStatus },
+      false,
+    );
+
+    if (res.success) {
+      setEmsps((prev) =>
+        prev.map((e) => {
+          if (e.id === emspId) {
+            return { ...e, active: nextActive };
+          }
+          return e;
+        }),
+      );
+      await fetchDatabaseState();
+    }
   };
 
   return (

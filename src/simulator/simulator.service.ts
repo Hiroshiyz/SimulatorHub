@@ -541,4 +541,24 @@ export class SimulatorService implements OnModuleInit {
     );
     return { success: true };
   }
+
+  async updateEmspRulesStatus(countryCode: string, partyId: string, channelStatus: string) {
+    const rules = await this.prisma.hubRoutingRule.findMany({
+      where: {
+        emspCountryCode: countryCode.toUpperCase(),
+        emspPartyId: partyId.toUpperCase(),
+      },
+    });
+
+    const updatedRules = [];
+    for (const rule of rules) {
+      const updated = await this.prisma.hubRoutingRule.update({
+        where: { id: rule.id },
+        data: { channelStatus },
+      });
+      await this.routingCacheService.syncRuleToRedis(updated);
+      updatedRules.push(updated);
+    }
+    return updatedRules;
+  }
 }

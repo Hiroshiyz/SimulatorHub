@@ -491,6 +491,15 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
                 e.partyId === backendEmsp.partyId &&
                 e.countryCode === backendEmsp.countryCode,
             );
+            const rule = routingRules.find(
+              (r) =>
+                r.emspCountryCode.toUpperCase() === backendEmsp.countryCode.toUpperCase() &&
+                r.emspPartyId.toUpperCase() === backendEmsp.partyId.toUpperCase(),
+            );
+            const active = rule
+              ? (rule.channelStatus === "PROD_ACTIVE" || rule.channelStatus === "MOCK_TESTING")
+              : (existing ? existing.active : true);
+
             return {
               id: backendEmsp.id,
               name:
@@ -501,7 +510,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
               url: backendEmsp.url,
               online: backendEmsp.online,
               latency: backendEmsp.latency,
-              active: existing ? existing.active : true,
+              active,
               tokenC: backendEmsp.tokenC,
             };
           });
