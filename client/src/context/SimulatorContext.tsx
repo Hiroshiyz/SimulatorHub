@@ -172,12 +172,30 @@ interface SimulatorContextType {
   terminalBodyRef: React.RefObject<HTMLDivElement | null>;
 
   // Routing Rules state and functions
-  routingRules: any[];
+  routingRules: HubRoutingRule[];
   fetchRoutingRules: () => Promise<void>;
-  handleAddRoutingRule: (data: any) => Promise<{ success: boolean; error?: string }>;
+  handleAddRoutingRule: (data: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
   handleToggleRuleStatus: (id: string, currentStatus: string) => Promise<{ success: boolean; error?: string }>;
-  handleUpdateRuleFilters: (id: string, filters: any) => Promise<{ success: boolean; error?: string }>;
+  handleUpdateRuleFilters: (id: string, filters: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
   handleDeleteRoutingRule: (id: string) => Promise<{ success: boolean; error?: string }>;
+}
+
+export interface HubRoutingRule {
+  id: string;
+  cpoCountryCode: string;
+  cpoPartyId: string;
+  emspCountryCode: string;
+  emspPartyId: string;
+  contractStatus: string;
+  channelStatus: string;
+  emspBaseUrl: string;
+  emspTokenB: string;
+  routingFilters: {
+    geographic_regions?: string[];
+    power_types?: string[];
+  };
+  createdAt: string;
+  updatedAt: string;
 }
 
 const INITIAL_AUTOCHARGE_MAPPINGS: AutoChargeMapping[] = [
@@ -278,7 +296,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
   // Phase 2 states
   const [emsps, setEmsps] = useState<EmspChannel[]>([]);
   const [cpos, setCpos] = useState<CpoTenant[]>([]);
-  const [routingRules, setRoutingRules] = useState<any[]>([]);
+  const [routingRules, setRoutingRules] = useState<HubRoutingRule[]>([]);
   const [autoCharges, setAutoCharges] = useState<AutoChargeMapping[]>(
     INITIAL_AUTOCHARGE_MAPPINGS,
   );
@@ -356,21 +374,27 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       const isLocValid = locations.some((l) => l.id === selectedLocationId);
       if (!isLocValid) {
         const firstLoc = locations[0];
-        setSelectedLocationId(firstLoc.id);
-        if (firstLoc.evses && firstLoc.evses.length > 0) {
-          setSelectedEvseUid(firstLoc.evses[0].uid);
-        } else {
-          setSelectedEvseUid(null);
-        }
+        setTimeout(() => {
+          setSelectedLocationId(firstLoc.id);
+          if (firstLoc.evses && firstLoc.evses.length > 0) {
+            setSelectedEvseUid(firstLoc.evses[0].uid);
+          } else {
+            setSelectedEvseUid(null);
+          }
+        }, 0);
       } else {
         const currentLoc = locations.find((l) => l.id === selectedLocationId);
         const isEvseValid = currentLoc?.evses?.some((e) => e.uid === selectedEvseUid);
         if (!isEvseValid && currentLoc?.evses && currentLoc.evses.length > 0) {
-          setSelectedEvseUid(currentLoc.evses[0].uid);
+          setTimeout(() => {
+            setSelectedEvseUid(currentLoc.evses[0].uid);
+          }, 0);
         }
       }
     } else {
-      setSelectedEvseUid(null);
+      setTimeout(() => {
+        setSelectedEvseUid(null);
+      }, 0);
     }
   }, [locations, selectedLocationId, selectedEvseUid]);
 
@@ -857,7 +881,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleAddRoutingRule = async (data: any) => {
+  const handleAddRoutingRule = async (data: Record<string, unknown>) => {
     addLog(
       "SYSTEM",
       "ADD_ROUTING_RULE",
@@ -900,7 +924,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     return { success: res.success, error: res.error };
   };
 
-  const handleUpdateRuleFilters = async (id: string, filters: any) => {
+  const handleUpdateRuleFilters = async (id: string, filters: Record<string, unknown>) => {
     addLog(
       "SYSTEM",
       "UPDATE_RULE_FILTERS",

@@ -688,7 +688,7 @@ export default function HubRouterPage() {
                 const [cpoCountry, cpoParty] = selectedRuleCpo.split(":");
                 const [emspCountry, emspParty] = selectedRuleEmsp.split(":");
 
-                const routingFilters: any = {};
+                const routingFilters: Record<string, string[]> = {};
                 if (filterRegions.trim()) {
                   routingFilters.geographic_regions = filterRegions.split(",").map(r => r.trim()).filter(Boolean);
                 }
@@ -739,8 +739,8 @@ export default function HubRouterPage() {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxHeight: "600px", overflowY: "auto" }}>
                 {routingRules.map((rule) => {
-                  const hasRegions = rule.routingFilters?.geographic_regions?.length > 0;
-                  const hasPowerTypes = rule.routingFilters?.power_types?.length > 0;
+                  const hasRegions = (rule.routingFilters?.geographic_regions?.length ?? 0) > 0;
+                  const hasPowerTypes = (rule.routingFilters?.power_types?.length ?? 0) > 0;
 
                   return (
                     <div
@@ -812,8 +812,8 @@ export default function HubRouterPage() {
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "4px" }}>
                           <div style={{ fontSize: "12px" }}>
                             <span style={{ color: "var(--text-muted)" }}>地區過濾:</span>{" "}
-                            {hasRegions ? (
-                              rule.routingFilters.geographic_regions.map((reg: string) => (
+                             {hasRegions ? (
+                              rule.routingFilters.geographic_regions?.map((reg: string) => (
                                 <span key={reg} style={{ background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.2)", color: "var(--accent-blue)", padding: "1px 6px", borderRadius: "4px", fontSize: "11px", marginRight: "4px" }}>
                                   {reg}
                                 </span>
@@ -825,8 +825,8 @@ export default function HubRouterPage() {
 
                           <div style={{ fontSize: "12px" }}>
                             <span style={{ color: "var(--text-muted)" }}>功率過濾:</span>{" "}
-                            {hasPowerTypes ? (
-                              rule.routingFilters.power_types.map((pow: string) => (
+                             {hasPowerTypes ? (
+                              rule.routingFilters.power_types?.map((pow: string) => (
                                 <span key={pow} style={{ background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.2)", color: "var(--accent-green)", padding: "1px 6px", borderRadius: "4px", fontSize: "11px", marginRight: "4px" }}>
                                   {pow}
                                 </span>
