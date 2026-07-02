@@ -60,7 +60,18 @@ export class OcpiRoutingWorker extends WorkerHost {
 
   @OnWorkerEvent("failed")
   async onFailed(job: Job<any>, error: any) {
-    const errorMsg = error?.message || (typeof error === "object" ? JSON.stringify(error) : String(error));
+    let errorMsg = error?.message;
+
+    if (error?.name === "AggregateError" && Array.isArray(error.errors)) {
+      errorMsg = `AggregateError: ${error.errors.map((e: any) => e.message).join(", ")}`;
+    } else if (!errorMsg && error?.code) {
+      errorMsg = `Connection failed with code ${error.code}`;
+    }
+
+    if (!errorMsg) {
+      errorMsg = typeof error === "object" ? (error.name || "Unknown Error") : String(error);
+    }
+
     this.logger.error(`Job ${job.id} failed: ${errorMsg}`, error?.stack);
 
     // If job has failed after all 3 retries

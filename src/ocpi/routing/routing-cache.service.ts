@@ -1,15 +1,19 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 
 @Injectable()
-export class RoutingCacheService {
+export class RoutingCacheService implements OnModuleInit {
   private readonly logger = new Logger(RoutingCacheService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
   ) {}
+
+  async onModuleInit() {
+    await this.syncAllRulesToRedis();
+  }
 
   private getRedisKey(cpoCountryCode: string, cpoPartyId: string): string {
     return `hub:routing:${cpoCountryCode.toUpperCase()}:${cpoPartyId.toUpperCase()}`;
