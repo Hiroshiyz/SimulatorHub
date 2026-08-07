@@ -166,5 +166,65 @@ describe("EmspService", () => {
         "TW",
       );
     });
+
+    it("should preserve custom EVSE parameters from rawJson when syncing", async () => {
+      mockPrisma.party.findFirst.mockResolvedValueOnce({
+        id: "emsp-1",
+        countryCode: "TW",
+        partyId: "SMB",
+      });
+
+      mockPrisma.location.findMany.mockResolvedValueOnce([
+        {
+          id: "loc-123",
+          name: "Station 1",
+          address: "Main St",
+          city: "Taipei",
+          postalCode: "100",
+          country: "TWN",
+          coordinates: { latitude: "25.0", longitude: "121.0" },
+          rawJson: { name: "Station 1", parking_type: "ON_STREET" },
+          party: { countryCode: "TW", partyId: "CPO" },
+          evses: [
+            {
+              uid: "EVSE-1",
+              id: "E1",
+              status: "AVAILABLE",
+              rawJson: {
+                floor_level: "-1",
+                connectors: [{ id: "1", standard: "CCS_2" }],
+                physical_reference: "Bay 3",
+              },
+            },
+          ],
+        },
+      ]);
+
+      const forwardSpy = jest.spyOn(service, "forwardToEmsps").mockResolvedValueOnce(undefined);
+
+      const result = await service.syncLocationsToEmsp("TW", "SMB");
+
+      expect(result.success).toBe(true);
+      expect(forwardSpy).toHaveBeenCalledWith(
+        "PUT",
+        "locations/TW/CPO/loc-123",
+        expect.objectContaining({
+          parking_type: "ON_STREET",
+          evses: [
+            expect.objectContaining({
+              uid: "EVSE-1",
+              evse_id: "E1",
+              status: "AVAILABLE",
+              floor_level: "-1",
+              physical_reference: "Bay 3",
+              connectors: [{ id: "1", standard: "CCS_2" }],
+            }),
+          ],
+        }),
+        "emsp-1",
+        "CPO",
+        "TW",
+      );
+    });
   });
 });

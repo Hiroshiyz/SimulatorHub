@@ -12,7 +12,7 @@ describe("OcpiService", () => {
   const mockPrismaService = {
     party: { findMany: jest.fn().mockResolvedValue([]) },
     location: { upsert: jest.fn() },
-    evse: { upsert: jest.fn() },
+    evse: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() },
     session: { upsert: jest.fn() },
     cdr: { upsert: jest.fn() },
   };
@@ -89,11 +89,26 @@ describe("OcpiService", () => {
   });
 
   describe("handlePatchEvse", () => {
-    it("should upsert EVSE status in prisma", async () => {
+    it("should upsert EVSE status in prisma and merge rawJson", async () => {
+      mockPrismaService.evse.findUnique.mockResolvedValueOnce({
+        rawJson: { connectors: [{ id: "1" }], capabilities: ["REMOTE_START_STOP_ALLOWED"] },
+        status: "AVAILABLE",
+      });
       const payload = { status: "CHARGING" };
       await service.handlePatchEvse(mockParty, "TW", "NPT", "loc-1", "evse-1", payload);
 
-      expect(mockPrismaService.evse.upsert).toHaveBeenCalled();
+      expect(mockPrismaService.evse.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({
+            status: "CHARGING",
+            rawJson: {
+              connectors: [{ id: "1" }],
+              capabilities: ["REMOTE_START_STOP_ALLOWED"],
+              status: "CHARGING",
+            },
+          }),
+        }),
+      );
     });
   });
 
