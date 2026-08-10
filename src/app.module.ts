@@ -7,10 +7,11 @@ import { SimulatorModule } from "./simulator/simulator.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RedisModule } from "./redis/redis.module";
 import { EmspModule } from "./emsp/emsp.module";
+import { AppController } from "./app.controller";
 
 @Module({
   imports: [PrismaModule, RedisModule, EmspModule, OcpiModule, SimulatorModule],
-  controllers: [],
+  controllers: [AppController],
   providers: [
     {
       provide: APP_INTERCEPTOR,

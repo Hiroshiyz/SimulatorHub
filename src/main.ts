@@ -10,9 +10,10 @@ async function bootstrap() {
   const port = process.env.PORT || 3030;
 
   app.enableCors({ credentials: true });
-  app.useStaticAssets(join(__dirname, "..", "public"));
+  app.useStaticAssets(join(process.cwd(), "public"));
 
   await app.listen(port);
   console.log(`OCPI Mock Hub is running on: http://localhost:${port}`);
 }
+// Reload trigger
 bootstrap();
