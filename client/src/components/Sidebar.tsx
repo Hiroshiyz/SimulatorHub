@@ -18,25 +18,17 @@ export default function Sidebar() {
   return (
     <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
       <div className="brand-section">
-        <div
-          className="brand-logo"
-          style={{
-            width: "auto",
-            padding: "0 10px",
-            fontSize: "13px",
-            textTransform: "uppercase",
-          }}
-        >
-          smart HUB
+        <div className="brand-logo"><Zap size={19} /></div>
+        <div className="brand-copy">
+          <span className="brand-name">Simulator Hub</span>
+          <span className="brand-subtitle">OCPI Operations</span>
         </div>
-        <span className="brand-name" style={{ textTransform: "uppercase" }}>
-          Simulator
-        </span>
       </div>
 
       <ul className="nav-links">
+        <li className="nav-section-label">營運中心</li>
         <li>
-          <a
+          <button
             className={`nav-item ${activeTab === "dashboard" ? "active" : ""}`}
             onClick={() => {
               setActiveTab("dashboard");
@@ -44,11 +36,12 @@ export default function Sidebar() {
             }}
           >
             <Zap size={18} />
-            Dashboard
-          </a>
+            <span><strong>營運總覽</strong><small>即時狀態與快速操作</small></span>
+          </button>
         </li>
+        <li className="nav-section-label">模擬操作</li>
         <li>
-          <a
+          <button
             className={`nav-item ${activeTab === "cpo-sim" ? "active" : ""}`}
             onClick={() => {
               setActiveTab("cpo-sim");
@@ -56,11 +49,12 @@ export default function Sidebar() {
             }}
           >
             <Cpu size={18} />
-            Charger Simulator ({activeSessionsCount})
-          </a>
+            <span><strong>CPO 充電模擬</strong><small>場站、槍頭與充電情境</small></span>
+            {activeSessionsCount > 0 && <b className="nav-count">{activeSessionsCount}</b>}
+          </button>
         </li>
         <li>
-          <a
+          <button
             className={`nav-item ${activeTab === "emsp-sim" ? "active" : ""}`}
             onClick={() => {
               setActiveTab("emsp-sim");
@@ -68,11 +62,12 @@ export default function Sidebar() {
             }}
           >
             <UserCheck size={18} />
-            eMSP Simulator
-          </a>
+            <span><strong>eMSP 指令模擬</strong><small>遠端啟停與漫遊資料</small></span>
+          </button>
         </li>
+        <li className="nav-section-label">HUB 管理</li>
         <li>
-          <a
+          <button
             className={`nav-item ${activeTab === "hub-router" ? "active" : ""}`}
             onClick={() => {
               setActiveTab("hub-router");
@@ -80,8 +75,8 @@ export default function Sidebar() {
             }}
           >
             <Layers size={18} />
-            HUB Dashboard
-          </a>
+            <span><strong>路由與租戶</strong><small>CPO / eMSP 通道管理</small></span>
+          </button>
         </li>
         {/* <li>
           <a
@@ -98,10 +93,8 @@ export default function Sidebar() {
       </ul>
 
       <div className="sidebar-footer">
-        <p>Mock Hub Portal</p>
-        <p style={{ marginTop: "4px" }}>
-          Status: {isOnline ? "Online" : "Offline"}
-        </p>
+        <span className={`sidebar-status-dot ${isOnline ? "online" : ""}`} />
+        <div><strong>{isOnline ? "系統運作中" : "服務未連線"}</strong><small>Mock HUB · OCPI 2.2.1</small></div>
       </div>
     </aside>
   );

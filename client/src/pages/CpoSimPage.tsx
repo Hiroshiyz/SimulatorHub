@@ -250,6 +250,20 @@ export default function CpoSimPage() {
 
   return (
     <div className="workspace">
+      <div className="operation-steps" aria-label="充電模擬流程">
+        <div className={`operation-step ${selectedLocationId ? "complete" : "active"}`}>
+          <span>1</span><div><strong>選擇設備</strong><small>場站與充電槍</small></div>
+        </div>
+        <div className="step-connector" />
+        <div className={`operation-step ${selectedLocationId && selectedEvseUid ? "active" : ""}`}>
+          <span>2</span><div><strong>選擇啟動方式</strong><small>RFID 或 AutoCharge</small></div>
+        </div>
+        <div className="step-connector" />
+        <div className={`operation-step ${selectedEvseUid && activeChargingSessions[selectedEvseUid] ? "active complete" : ""}`}>
+          <span>3</span><div><strong>監看與停止</strong><small>遙測、Session 與 CDR</small></div>
+        </div>
+      </div>
+
       {/* PAGE HEADER STATS DASHBOARD */}
       <div style={{
         display: "grid",
