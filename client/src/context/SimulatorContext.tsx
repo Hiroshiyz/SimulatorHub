@@ -286,10 +286,22 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     "idle",
   );
 
-  // Selection & Input states
-  const [selectedLocationId, setSelectedLocationId] =
+  // Selection & Input states (Internal raw state)
+  const [selectedLocationIdState, setSelectedLocationId] =
     useState<string>("loc_001");
-  const [selectedEvseUid, setSelectedEvseUid] = useState<string | null>(null);
+  const [selectedEvseUidState, setSelectedEvseUid] = useState<string | null>(null);
+
+  // Derive normalized/effective values to prevent invalid states without using useEffect
+  const hasSelectedLoc = locations.some((l) => l.id === selectedLocationIdState);
+  const selectedLocationId = locations.length > 0
+    ? (hasSelectedLoc ? selectedLocationIdState : locations[0].id)
+    : "loc_001";
+
+  const matchedLoc = locations.find((l) => l.id === selectedLocationId);
+  const matchedEvses = matchedLoc?.evses || [];
+  const selectedEvseUid = matchedEvses.length > 0
+    ? (matchedEvses.some((e) => e.uid === selectedEvseUidState) ? selectedEvseUidState : matchedEvses[0].uid)
+    : null;
   const [customEvseStatus, setCustomEvseStatus] = useState<string>("AVAILABLE");
   const [newSessionId, setNewSessionId] = useState<string>("");
 
@@ -573,6 +585,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Sync logic is now cleanly derived on rendering above. No useEffect required.
 
   // Scroll to bottom of terminal when logs update
   useEffect(() => {
@@ -1462,7 +1475,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       (e) => e.id === sessionPayloadEdit.emsp_id || e.id === "EMSP-A" || e.partyId === "SMB" || e.active
     ) || emsps[0];
     if (matchedEmsp && matchedEmsp.active) {
-      const { countryCode, partyId } = getLocCpoInfo(sessionPayloadEdit.location_id || "");
+      const { countryCode, partyId } = getLocCpoInfo(
+        sessionPayloadEdit.location_id || "",
+      );
       await sendRequest(
         `Manual PUT Session [${sessionPayloadEdit.id}]`,
         `/simulator/simulate/sessions/${countryCode}/${partyId}/${sessionPayloadEdit.id}`,

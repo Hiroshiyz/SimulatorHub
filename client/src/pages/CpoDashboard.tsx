@@ -20,16 +20,11 @@ export default function CpoDashboard() {
       {/* Sidebar Navigation */}
       <Sidebar />
 
-      {/* Main Content Workspace */}
       <main className="main-content">
-        {/* Top Header */}
         <TopBar />
 
-        <div className="workspace">
-          {/* CPO -> HUB -> EMSP Flow Diagram */}
-          <FlowDiagram />
-
-          {/* Tab Renderers */}
+        <div className="page-scroll">
+          {activeTab !== "dashboard" && <FlowDiagram />}
           {activeTab === "dashboard" && <Dashboard />}
           {activeTab === "cpo-sim" && <CpoSimPage />}
           {activeTab === "emsp-sim" && <EmspSimPage />}
@@ -38,7 +33,6 @@ export default function CpoDashboard() {
         </div>
       </main>
 
-      {/* macOS Terminal Logs Console */}
       <TerminalConsole />
 
       {/* Elegant Toast Notifications */}

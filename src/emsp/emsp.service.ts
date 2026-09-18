@@ -211,8 +211,9 @@ export class EmspService {
         if (!party) continue;
 
         const cleanedEvses = loc.evses.map((e) => {
-          const raw = e.rawJson as any;
+          const raw = (e.rawJson && typeof e.rawJson === "object" ? e.rawJson : {}) as any;
           return {
+            ...raw,
             uid: e.uid,
             evse_id: e.id || raw?.evse_id || e.uid,
             status: e.status,
@@ -221,8 +222,15 @@ export class EmspService {
           };
         });
 
-        const rawLoc = loc.rawJson as any;
+        const rawLoc = (loc.rawJson && typeof loc.rawJson === "object" ? loc.rawJson : {}) as any;
         const payload = {
+          id: loc.id,
+          name: loc.name,
+          address: loc.address,
+          city: loc.city,
+          postal_code: loc.postalCode,
+          country: loc.country,
+          coordinates: loc.coordinates,
           ...rawLoc,
           evses: cleanedEvses,
         };

@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/Hiroshiyz/SimulatorHub)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Node Version](https://img.shields.io/badge/node-%3E%3D20.x-blue?style=flat&logo=node.js)](https://nodejs.org)
+[![Node Version](https://img.shields.io/badge/node-%3E%3D22.12-blue?style=flat&logo=node.js)](https://nodejs.org)
 [![Prisma Version](https://img.shields.io/badge/prisma-7.8.0-blue?style=flat&logo=prisma)](https://prisma.io)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-16-blue?style=flat&logo=postgresql)](https://www.postgresql.org)
 [![Redis](https://img.shields.io/badge/redis-7.2-red?style=flat&logo=redis)](https://redis.io)
@@ -36,7 +36,11 @@
 - **多租戶限流與安全保護**：按 IP 或註冊的 tenant 身份進行動態限流，保證系統的可用性。
 
 ### 快速入門 (Quickstart)
-1. **複製環境設定檔**：
+1. **切換 Node.js 版本**（專案已提供 `.nvmrc`）：
+   ```bash
+   nvm use
+   ```
+2. **複製環境設定檔**：
    ```bash
    cp .env.example .env
    ```

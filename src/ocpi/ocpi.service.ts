@@ -121,6 +121,23 @@ export class OcpiService {
       `[Tenant: ${party.id}] Received PATCH EVSE: ${evseUid} for location: ${locationId}`,
     );
 
+    const existingEvse = await this.prisma.evse.findUnique({
+      where: {
+        locationPartyId_locationId_uid: {
+          locationPartyId: party.id,
+          locationId: locationId,
+          uid: evseUid,
+        },
+      },
+    });
+
+    const updatedRawJson = {
+      ...((existingEvse?.rawJson && typeof existingEvse.rawJson === "object"
+        ? (existingEvse.rawJson as object)
+        : {})),
+      ...(payload && typeof payload === "object" ? payload : {}),
+    };
+
     await this.prisma.evse.upsert({
       where: {
         locationPartyId_locationId_uid: {
@@ -137,8 +154,8 @@ export class OcpiService {
         rawJson: payload,
       },
       update: {
-        status: payload.status,
-        rawJson: payload,
+        status: payload.status || existingEvse?.status || "UNKNOWN",
+        rawJson: updatedRawJson,
       },
     });
 
