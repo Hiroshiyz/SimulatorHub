@@ -70,37 +70,267 @@ export default function CpoSimPage() {
   const [locJson, setLocJson] = useState<string>(() =>
     JSON.stringify(
       {
-        country_code: "TW",
-        party_id: "EVZ",
-        id: "6619b6ab-c963-5e51-81d3-090251beebbe",
-        name: "文桃站",
-        address: "桃園市龜山區文吉路28號旁",
-        city: "桃園市",
-        postal_code: "320",
-        country: "TAO",
-        coordinates: { latitude: "25.0466870", longitude: "121.3918410" },
-        parking_type: "ON_STREET",
-        evses: [
-          {
-            uid: "TW*EVZ*11500104",
-            evse_id: "TW*EVZ*11500104",
-            status: "AVAILABLE",
-            capabilities: ["REMOTE_START_STOP_CAPABLE"],
-            connectors: [
-              {
-                id: "TW*EVZ*11500104",
-                standard: "IEC_62196_T2_COMBO",
-                format: "CABLE",
-                power_type: "DC",
-                max_voltage: 380,
-                max_amperage: 474,
-                max_electric_power: 180000,
-                tariff_ids: ["25ebf06c-cfa3-5aa4-af17-3e5a41daaf6a"],
-              },
+            "country_code": "TW",
+            "party_id": "EVZ",
+            "id": "6619b6ab-c963-5e51-81d3-090251beebbe",
+            "stationId": "6619b6ab-c963-5e51-81d3-090251beebbe",
+            "publish": true,
+            "name": "文桃站",
+            "address": "桃園市龜山區文吉路28號旁",
+            "city": "桃園市",
+            "postal_code": "320",
+            "state": "",
+            "country": "TAO",
+            "coordinates": {
+                "latitude": "25.0466870",
+                "longitude": "121.3918410"
+            },
+            "parking_type": "ON_STREET",
+            "evses": [
+                {
+                    "uid": "TW*EVZ*11500104",
+                    "evse_id": "TW*EVZ*11500104",
+                    "status": "CHARGING",
+                    "status_schedule": [],
+                    "capabilities": [
+                        "REMOTE_START_STOP_CAPABLE",
+                        "START_SESSION_CONNECTOR_REQUIRED",
+                        "CHARGING_PREFERENCES_CAPABLE"
+                    ],
+                    "connectors": [
+                        {
+                            "id": "TW*EVZ*11500104",
+                            "standard": "IEC_62196_T2_COMBO",
+                            "format": "CABLE",
+                            "power_type": "DC",
+                            "max_voltage": 380,
+                            "max_amperage": 474,
+                            "max_electric_power": 180000,
+                            "tariff_ids": [
+                                "25ebf06c-cfa3-5aa4-af17-3e5a41daaf6a"
+                            ],
+                            "last_updated": "2026-04-10T03:28:47.000Z"
+                        }
+                    ],
+                    "physical_reference": "11500104",
+                    "directions": [],
+                    "parking_restrictions": [
+                        "PLUGGED"
+                    ],
+                    "images": [],
+                    "last_updated": "2025-07-09T03:28:05.000Z"
+                },
+                {
+                    "uid": "TW*EVZ*11500103",
+                    "evse_id": "TW*EVZ*11500103",
+                    "status": "AVAILABLE",
+                    "status_schedule": [],
+                    "capabilities": [
+                        "REMOTE_START_STOP_CAPABLE",
+                        "START_SESSION_CONNECTOR_REQUIRED",
+                        "CHARGING_PREFERENCES_CAPABLE"
+                    ],
+                    "connectors": [
+                        {
+                            "id": "TW*EVZ*11500103",
+                            "standard": "IEC_62196_T1_COMBO",
+                            "format": "CABLE",
+                            "power_type": "DC",
+                            "max_voltage": 380,
+                            "max_amperage": 474,
+                            "max_electric_power": 180000,
+                            "tariff_ids": [
+                                "25ebf06c-cfa3-5aa4-af17-3e5a41daaf6a"
+                            ],
+                            "last_updated": "2026-04-10T02:47:15.000Z"
+                        }
+                    ],
+                    "physical_reference": "11500103",
+                    "directions": [],
+                    "parking_restrictions": [
+                        "PLUGGED"
+                    ],
+                    "images": [],
+                    "last_updated": "2025-07-09T03:28:05.000Z"
+                },
+                {
+                    "uid": "TW*EVZ*11500102",
+                    "evse_id": "TW*EVZ*11500102",
+                    "status": "CHARGING",
+                    "status_schedule": [],
+                    "capabilities": [
+                        "REMOTE_START_STOP_CAPABLE",
+                        "START_SESSION_CONNECTOR_REQUIRED",
+                        "CHARGING_PREFERENCES_CAPABLE"
+                    ],
+                    "connectors": [
+                        {
+                            "id": "TW*EVZ*11500102",
+                            "standard": "IEC_62196_T2_COMBO",
+                            "format": "CABLE",
+                            "power_type": "DC",
+                            "max_voltage": 380,
+                            "max_amperage": 474,
+                            "max_electric_power": 180000,
+                            "tariff_ids": [
+                                "25ebf06c-cfa3-5aa4-af17-3e5a41daaf6a"
+                            ],
+                            "last_updated": "2026-04-10T03:16:04.000Z"
+                        }
+                    ],
+                    "physical_reference": "11500102",
+                    "directions": [],
+                    "parking_restrictions": [
+                        "PLUGGED"
+                    ],
+                    "images": [],
+                    "last_updated": "2025-07-09T03:28:05.000Z"
+                },
+                {
+                    "uid": "TW*EVZ*11500101",
+                    "evse_id": "TW*EVZ*11500101",
+                    "status": "CHARGING",
+                    "status_schedule": [],
+                    "capabilities": [
+                        "REMOTE_START_STOP_CAPABLE",
+                        "START_SESSION_CONNECTOR_REQUIRED",
+                        "CHARGING_PREFERENCES_CAPABLE"
+                    ],
+                    "connectors": [
+                        {
+                            "id": "TW*EVZ*11500101",
+                            "standard": "IEC_62196_T1_COMBO",
+                            "format": "CABLE",
+                            "power_type": "DC",
+                            "max_voltage": 380,
+                            "max_amperage": 474,
+                            "max_electric_power": 180000,
+                            "tariff_ids": [
+                                "25ebf06c-cfa3-5aa4-af17-3e5a41daaf6a"
+                            ],
+                            "last_updated": "2026-04-09T23:15:48.000Z"
+                        }
+                    ],
+                    "physical_reference": "11500101",
+                    "directions": [],
+                    "parking_restrictions": [
+                        "PLUGGED"
+                    ],
+                    "images": [],
+                    "last_updated": "2025-07-09T03:28:05.000Z"
+                },
+                {
+                    "uid": "TW*EVZ*11500106",
+                    "evse_id": "TW*EVZ*11500106",
+                    "status": "CHARGING",
+                    "status_schedule": [],
+                    "capabilities": [
+                        "REMOTE_START_STOP_CAPABLE",
+                        "START_SESSION_CONNECTOR_REQUIRED",
+                        "CHARGING_PREFERENCES_CAPABLE"
+                    ],
+                    "connectors": [
+                        {
+                            "id": "TW*EVZ*11500106",
+                            "standard": "IEC_62196_T2_COMBO",
+                            "format": "CABLE",
+                            "power_type": "DC",
+                            "max_voltage": 380,
+                            "max_amperage": 474,
+                            "max_electric_power": 180000,
+                            "tariff_ids": [
+                                "25ebf06c-cfa3-5aa4-af17-3e5a41daaf6a"
+                            ],
+                            "last_updated": "2026-04-10T03:16:48.000Z"
+                        }
+                    ],
+                    "physical_reference": "11500106",
+                    "directions": [],
+                    "parking_restrictions": [
+                        "PLUGGED"
+                    ],
+                    "images": [],
+                    "last_updated": "2025-07-09T03:28:05.000Z"
+                },
+                {
+                    "uid": "TW*EVZ*11500105",
+                    "evse_id": "TW*EVZ*11500105",
+                    "status": "AVAILABLE",
+                    "status_schedule": [],
+                    "capabilities": [
+                        "REMOTE_START_STOP_CAPABLE",
+                        "START_SESSION_CONNECTOR_REQUIRED",
+                        "CHARGING_PREFERENCES_CAPABLE"
+                    ],
+                    "connectors": [
+                        {
+                            "id": "TW*EVZ*11500105",
+                            "standard": "IEC_62196_T2_COMBO",
+                            "format": "CABLE",
+                            "power_type": "DC",
+                            "max_voltage": 380,
+                            "max_amperage": 474,
+                            "max_electric_power": 180000,
+                            "tariff_ids": [
+                                "25ebf06c-cfa3-5aa4-af17-3e5a41daaf6a"
+                            ],
+                            "last_updated": "2026-04-10T03:08:53.000Z"
+                        }
+                    ],
+                    "physical_reference": "11500105",
+                    "directions": [],
+                    "parking_restrictions": [
+                        "PLUGGED"
+                    ],
+                    "images": [],
+                    "last_updated": "2025-07-09T03:28:05.000Z"
+                }
             ],
-          },
-        ],
-      },
+            "directions": [],
+            "operator": {
+                "name": "潔能氏EVEZ",
+                "website": "https://aktzin.biz",
+                "logo": {
+                    "url": "https://stcblokje.blob.core.windows.net/groups/3f8e37e7-ba72-43e5-ae8e-27a31506001c/4ab3809ebe41/logo.png",
+                    "category": "OPERATOR",
+                    "type": "png"
+                },
+                "contact_name": "汪柏澄",
+                "contact_phone": "0981272723"
+            },
+            "suboperator": {
+                "name": "潔能氏EVEZ",
+                "website": "https://aktzin.biz",
+                "logo": {
+                    "url": "https://stcblokje.blob.core.windows.net/groups/3f8e37e7-ba72-43e5-ae8e-27a31506001c/4ab3809ebe41/logo.png",
+                    "category": "OPERATOR",
+                    "type": "png"
+                },
+                "contact_name": "汪柏澄",
+                "contact_phone": "0981272723"
+            },
+            "owner": {
+                "name": "潔能氏EVEZ",
+                "website": "https://aktzin.biz",
+                "logo": {
+                    "url": "https://stcblokje.blob.core.windows.net/groups/3f8e37e7-ba72-43e5-ae8e-27a31506001c/4ab3809ebe41/logo.png",
+                    "category": "OWNER",
+                    "type": "png"
+                },
+                "contact_name": "汪柏澄",
+                "contact_phone": "0981272723"
+            },
+            "facilities": [],
+            "time_zone": "Asia/Taipei",
+            "images": [
+                {
+                    "url": "https://stcblokje.blob.core.windows.net/groups/3f8e37e7-ba72-43e5-ae8e-27a31506001c/4ab3809ebe41/logo.png",
+                    "category": "OPERATOR",
+                    "type": "png"
+                }
+            ],
+            "last_updated": "2025-07-09T03:28:05.000Z"
+},
       null,
       2,
     ),
@@ -108,22 +338,248 @@ export default function CpoSimPage() {
 
   const [tfJson, setTfJson] = useState<string>(() =>
     JSON.stringify(
-      {
-        id: "25ebf06c-cfa3-5aa4-af17-3e5a41daaf6a",
-        currency: "TWD",
-        elements: [
-          {
-            price_components: [
-              {
-                type: "ENERGY",
-                price: 5.9,
-                vat: 0.0,
-                step_size: 1,
-              },
-            ],
-          },
-        ],
-      },
+     {
+  "id": "25ebf06c-cfa3-5aa4-af17-3e5a41daaf6a",
+  "currency": "TWD",
+  "tariff_alt_text": [
+    {
+      "language": "zh",
+      "text": "文桃站早鳥計費包0922"
+    },
+    {
+      "language": "zh",
+      "text": "[PARKING TIME]本站啟用超時佔用費，車輛在10分鐘內駛離不予計費，超過則每分鐘NT$8"
+    }
+  ],
+  "elements": [
+    {
+      "price_components": [
+        {
+          "type": "ENERGY",
+          "price": 5.9,
+          "vat": 0.0,
+          "step_size": 1
+        }
+      ],
+      "restrictions": {
+        "start_time": "00:00",
+        "end_time": "02:00",
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-01"
+      }
+    },
+    {
+      "price_components": [
+        {
+          "type": "ENERGY",
+          "price": 5.7,
+          "vat": 0.0,
+          "step_size": 1
+        }
+      ],
+      "restrictions": {
+        "start_time": "02:00",
+        "end_time": "05:00",
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-01"
+      }
+    },
+    {
+      "price_components": [
+        {
+          "type": "ENERGY",
+          "price": 6.5,
+          "vat": 0.0,
+          "step_size": 1
+        }
+      ],
+      "restrictions": {
+        "start_time": "05:00",
+        "end_time": "18:00",
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-01"
+      }
+    },
+    {
+      "price_components": [
+        {
+          "type": "ENERGY",
+          "price": 6.3,
+          "vat": 0.0,
+          "step_size": 1
+        }
+      ],
+      "restrictions": {
+        "start_time": "18:00",
+        "end_time": "23:59",
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-01"
+      }
+    },
+    {
+      "price_components": [
+        {
+          "type": "ENERGY",
+          "price": 5.9,
+          "vat": 0.0,
+          "step_size": 1
+        }
+      ],
+      "restrictions": {
+        "start_time": "00:00",
+        "end_time": "02:00",
+        "day_of_week": [
+          "MONDAY",
+          "TUESDAY",
+          "WEDNESDAY",
+          "THURSDAY",
+          "FRIDAY",
+          "SATURDAY",
+          "SUNDAY"
+        ]
+      }
+    },
+    {
+      "price_components": [
+        {
+          "type": "ENERGY",
+          "price": 5.7,
+          "vat": 0.0,
+          "step_size": 1
+        }
+      ],
+      "restrictions": {
+        "start_time": "02:00",
+        "end_time": "05:00",
+        "day_of_week": [
+          "MONDAY",
+          "TUESDAY",
+          "WEDNESDAY",
+          "THURSDAY",
+          "FRIDAY",
+          "SATURDAY",
+          "SUNDAY"
+        ]
+      }
+    },
+    {
+      "price_components": [
+        {
+          "type": "ENERGY",
+          "price": 6.6,
+          "vat": 0.0,
+          "step_size": 1
+        }
+      ],
+      "restrictions": {
+        "start_time": "05:00",
+        "end_time": "15:00",
+        "day_of_week": [
+          "MONDAY",
+          "TUESDAY",
+          "WEDNESDAY",
+          "THURSDAY",
+          "FRIDAY"
+        ]
+      }
+    },
+    {
+      "price_components": [
+        {
+          "type": "ENERGY",
+          "price": 13.5,
+          "vat": 0.0,
+          "step_size": 1
+        }
+      ],
+      "restrictions": {
+        "start_time": "15:00",
+        "end_time": "21:00",
+        "day_of_week": [
+          "MONDAY",
+          "TUESDAY",
+          "WEDNESDAY",
+          "THURSDAY",
+          "FRIDAY"
+        ]
+      }
+    },
+    {
+      "price_components": [
+        {
+          "type": "ENERGY",
+          "price": 6.5,
+          "vat": 0.0,
+          "step_size": 1
+        }
+      ],
+      "restrictions": {
+        "start_time": "21:00",
+        "end_time": "23:59",
+        "day_of_week": [
+          "MONDAY",
+          "TUESDAY",
+          "WEDNESDAY",
+          "THURSDAY",
+          "FRIDAY"
+        ]
+      }
+    },
+    {
+      "price_components": [
+        {
+          "type": "ENERGY",
+          "price": 6.5,
+          "vat": 0.0,
+          "step_size": 1
+        }
+      ],
+      "restrictions": {
+        "start_time": "05:00",
+        "end_time": "18:00",
+        "day_of_week": [
+          "SATURDAY",
+          "SUNDAY"
+        ]
+      }
+    },
+    {
+      "price_components": [
+        {
+          "type": "ENERGY",
+          "price": 6.3,
+          "vat": 0.0,
+          "step_size": 1
+        }
+      ],
+      "restrictions": {
+        "start_time": "18:00",
+        "end_time": "23:59",
+        "day_of_week": [
+          "SATURDAY",
+          "SUNDAY"
+        ]
+      }
+    },
+    {
+      "price_components": [
+        {
+          "type": "PARKING_TIME",
+          "price": 8.0,
+          "vat": 0.0,
+          "step_size": 60
+        }
+      ],
+      "restrictions": {
+        "start_time": "00:00",
+        "end_time": "23:59",
+        "min_duration": 600
+      }
+    }
+  ],
+  "last_updated": "2026-02-22T16:01:00.000Z"
+}
+,
       null,
       2,
     ),
