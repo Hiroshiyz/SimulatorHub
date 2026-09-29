@@ -164,6 +164,7 @@ interface SimulatorContextType {
     evseUid: string,
     fields: Partial<ActiveSessionState>,
   ) => void;
+  releaseActiveChargingSession: (evseUid: string, sessionId?: string) => void;
   tariffPrice: number;
   transmitCdr: (cdrId: string, customCdr?: OcpiCdr) => Promise<void>;
   triggerManualSessionSend: () => Promise<void>;
@@ -1272,6 +1273,18 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const releaseActiveChargingSession = (evseUid: string, sessionId?: string) => {
+    const currentSession = activeSessionsRef.current[evseUid];
+    if (!currentSession || (sessionId && currentSession.sessionId !== sessionId)) return;
+
+    const nextSessions = { ...activeSessionsRef.current };
+    delete nextSessions[evseUid];
+    // Update the ref immediately so a second remote START cannot be rejected
+    // while React is still waiting to commit the state update.
+    activeSessionsRef.current = nextSessions;
+    setActiveChargingSessions(nextSessions);
+  };
+
   // Update session telemetry and send PUT request to HUB
   const updateSessionTelemetryAndSend = async (
     evseUid: string,
@@ -1384,11 +1397,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         await transmitCdr(newCdr.id, newCdr);
       }
 
-      setActiveChargingSessions((prev) => {
-        const next = { ...prev };
-        delete next[evseUid];
-        return next;
-      });
+      releaseActiveChargingSession(evseUid, mergedSession.sessionId);
 
       addLog(
         "CPO_SIM",
@@ -1637,6 +1646,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
             }
           ],
           last_updated: new Date().toISOString(),
+          emsp_id: session.emspId,
           ...sessionTemplateRef.current,
         };
 
@@ -1774,6 +1784,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         setCdrTemplate,
         updateSessionTelemetryAndSend,
         updateSessionTelemetryOnly,
+        releaseActiveChargingSession,
         tariffPrice,
 
         // Phase 2 states

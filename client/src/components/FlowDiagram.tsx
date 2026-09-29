@@ -1,7 +1,8 @@
 import { useSimulator } from "../context/SimulatorContext";
 
 export default function FlowDiagram() {
-  const { flowStep } = useSimulator();
+  const { flowStep, activeTab } = useSimulator();
+  const isRealIntegration = activeTab === "emsp-sim";
 
   return (
     <div className="flow-diagram-container">
@@ -60,7 +61,7 @@ export default function FlowDiagram() {
             className={`flow-node ${flowStep === "cpo" ? "active" : ""}`}
           />
           <text x="60" y="32" className="flow-node-text">
-            CPO Simulator
+            {isRealIntegration ? "CPO System" : "CPO Simulator"}
           </text>
           <text x="60" y="48" className="flow-node-sub">
             (充電樁端)
@@ -76,7 +77,7 @@ export default function FlowDiagram() {
             className={`flow-node ${flowStep === "hub" ? "active" : ""}`}
           />
           <text x="250" y="32" className="flow-node-text">
-            Mock HUB
+            {isRealIntegration ? "OCPI HUB" : "Mock HUB"}
           </text>
           <text x="250" y="48" className="flow-node-sub">
             (漫遊中心)

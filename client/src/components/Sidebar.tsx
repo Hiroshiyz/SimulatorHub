@@ -8,11 +8,17 @@ export default function Sidebar() {
     isOnline,
     sidebarOpen,
     setSidebarOpen,
-    sessions,
+    activeChargingSessions,
+    emsps,
   } = useSimulator();
 
-  const activeSessionsCount = sessions.filter(
-    (s) => s.status === "ACTIVE",
+  const mockEmspIds = new Set(
+    emsps
+      .filter((emsp) => emsp.url?.includes("/mock-emsp/"))
+      .map((emsp) => emsp.id),
+  );
+  const activeSessionsCount = Object.values(activeChargingSessions).filter(
+    (session) => session.status === "ACTIVE" && session.emspId && mockEmspIds.has(session.emspId),
   ).length;
 
   return (
@@ -49,7 +55,7 @@ export default function Sidebar() {
             }}
           >
             <Cpu size={18} />
-            <span><strong>CPO 充電模擬</strong><small>場站、槍頭與充電情境</small></span>
+            <span><strong>本機 Mock 測試</strong><small>內建 CPO、eMSP 與充電流程</small></span>
             {activeSessionsCount > 0 && <b className="nav-count">{activeSessionsCount}</b>}
           </button>
         </li>
@@ -62,7 +68,7 @@ export default function Sidebar() {
             }}
           >
             <UserCheck size={18} />
-            <span><strong>eMSP 指令模擬</strong><small>遠端啟停與漫遊資料</small></span>
+            <span><strong>實體 eMSP 串接</strong><small>CPO 狀態、SoC 與 Session 回傳</small></span>
           </button>
         </li>
         <li className="nav-section-label">HUB 管理</li>

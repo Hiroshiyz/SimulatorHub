@@ -257,6 +257,8 @@ export class OcpiService {
       payload,
       countryCode,
       partyId,
+      toCountryCode,
+      toPartyId,
     );
 
     return this.wrapResponse(null, 1000, "Session successfully updated");

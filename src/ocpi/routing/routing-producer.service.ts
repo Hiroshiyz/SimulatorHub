@@ -23,6 +23,8 @@ export class RoutingProducerService {
     payload: any,
     cpoCountryCode: string,
     cpoPartyId: string,
+    targetEmspCountryCode?: string,
+    targetEmspPartyId?: string,
   ): Promise<void> {
     this.logger.log(
       `Processing routing for CPO: ${cpoCountryCode}:${cpoPartyId}, subPath: ${subPath}`,
@@ -40,6 +42,15 @@ export class RoutingProducerService {
     const mockTokenB = this.configService.get<string>("CREDENTIALS_TOKEN_B");
 
     for (const rule of rules) {
+      if (
+        targetEmspCountryCode &&
+        targetEmspPartyId &&
+        (rule.emspCountryCode.toUpperCase() !== targetEmspCountryCode.toUpperCase() ||
+          rule.emspPartyId.toUpperCase() !== targetEmspPartyId.toUpperCase())
+      ) {
+        continue;
+      }
+
       // 1. Check contract_status
       if (rule.contractStatus !== "ACTIVE") {
         this.logger.log(

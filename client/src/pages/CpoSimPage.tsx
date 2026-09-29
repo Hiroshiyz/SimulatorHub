@@ -9,6 +9,7 @@ import {
 import { useState, useEffect } from "react";
 import isChargingIcon from "../assets/isCharging.svg";
 import noChargingIcon from "../assets/noCharging.svg";
+import EmspSimPage from "./EmspSimPage";
 
 const OCPP_TO_OCPI: Record<string, string> = {
   Available: "AVAILABLE",
@@ -63,8 +64,9 @@ export default function CpoSimPage() {
   // RFID configuration
   const [rfidTokenInput, setRfidTokenInput] = useState<string>("MANUAL-TOKEN-CPO");
   const [selectedRfidEmspId, setSelectedRfidEmspId] = useState<string>("");
+  const mockEmsps = emsps.filter((emsp) => emsp.url?.includes("/mock-emsp/"));
   const defaultRfidEmspId =
-    selectedRfidEmspId || (emsps.find((e) => e.active) || emsps[0])?.id || "";
+    selectedRfidEmspId || (mockEmsps.find((e) => e.active) || mockEmsps[0])?.id || "";
 
   // Custom JSON assets
   const [locJson, setLocJson] = useState<string>(() =>
@@ -749,8 +751,8 @@ export default function CpoSimPage() {
             <UserCheck size={22} />
           </div>
           <div>
-            <div style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>漫遊服務商 (eMSP)</div>
-            <div style={{ fontSize: "18px", fontWeight: 700, color: "white", marginTop: "2px" }}>{emsps.length} 家已聯網</div>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>內建 Mock eMSP</div>
+            <div style={{ fontSize: "18px", fontWeight: 700, color: "white", marginTop: "2px" }}>{mockEmsps.length} 家可用</div>
           </div>
         </div>
       </div>
@@ -884,7 +886,7 @@ export default function CpoSimPage() {
                           onChange={(e) => setSelectedRfidEmspId(e.target.value)}
                           style={{ height: "34px", padding: "4px 8px", fontSize: "12.5px" }}
                         >
-                          {emsps.map((e) => (
+                          {mockEmsps.map((e) => (
                             <option key={e.id} value={e.id}>
                               {e.name}
                             </option>
@@ -911,7 +913,7 @@ export default function CpoSimPage() {
                     }}
                     className="button"
                     style={{ height: "34px", fontSize: "12px", marginTop: "16px", width: "100%", background: "linear-gradient(135deg, var(--accent-purple), var(--accent-blue))" }}
-                    disabled={!selectedEvseUid}
+                    disabled={!selectedEvseUid || !defaultRfidEmspId}
                   >
                     RFID 刷卡啟動
                   </button>
@@ -954,12 +956,22 @@ export default function CpoSimPage() {
                   <button
                     onClick={() => {
                       if (selectedEvseUid) {
-                        startSimulatedCharging(selectedLocationId, selectedEvseUid, true, selectedMac);
+                        const mapping = autoCharges.find((item) => item.mac === selectedMac);
+                        startSimulatedCharging(
+                          selectedLocationId,
+                          selectedEvseUid,
+                          true,
+                          selectedMac,
+                          undefined,
+                          true,
+                          mapping?.tokenUid || null,
+                          defaultRfidEmspId,
+                        );
                       }
                     }}
                     className="button"
                     style={{ height: "34px", fontSize: "12px", marginTop: "16px", width: "100%", background: "linear-gradient(135deg, var(--accent-red), #b91c1c)" }}
-                    disabled={!selectedEvseUid || !selectedMac}
+                    disabled={!selectedEvseUid || !selectedMac || !defaultRfidEmspId}
                   >
                     插槍自動充電
                   </button>
@@ -1232,6 +1244,13 @@ export default function CpoSimPage() {
           })}
         </div>
       </div>
+
+      <section className="workspace-section-divider">
+        <span className="eyebrow">BUILT-IN MOCK EMSP</span>
+        <h2>內建 Mock eMSP 指令與接收結果</h2>
+        <p>遠端啟停、Session 與 CDR 都集中在本機 Mock 測試頁，不會混入實體串接租戶。</p>
+      </section>
+      <EmspSimPage mode="mock" embedded />
     </div>
   );
 }

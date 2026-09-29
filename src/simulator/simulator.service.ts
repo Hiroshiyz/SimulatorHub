@@ -159,6 +159,19 @@ export class SimulatorService implements OnModuleInit {
     payload: any,
   ) {
     const config = await this.getTenantConfig(countryCode, partyId);
+    if (payload.emsp_id) {
+      const targetEmsp = await this.prisma.party.findFirst({
+        where: {
+          id: payload.emsp_id,
+          role: "EMSP",
+        },
+      });
+      if (targetEmsp) {
+        config.headers["OCPI-to-party-id"] = targetEmsp.partyId.toUpperCase();
+        config.headers["OCPI-to-country-code"] = targetEmsp.countryCode.toUpperCase();
+      }
+    }
+    //模擬CPO回傳HUB的Session PUT API
     const url = `${config.baseUrl}/ocpi/2.2.1/sessions/${countryCode}/${partyId}/${sessionId}`;
     try {
       this.logger.log(`Sending PUT Session to: ${url}`);

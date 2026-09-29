@@ -41,15 +41,15 @@ export default function Dashboard() {
         <div className="dashboard-main-column">
           <div className="section-heading"><div><span className="eyebrow">QUICK START</span><h2>你想進行哪一項操作？</h2></div></div>
           <div className="quick-action-grid">
-            <button className="quick-action primary-action" onClick={() => setActiveTab("cpo-sim")}><span className="quick-action-icon"><Zap size={24} /></span><span><strong>模擬一次充電</strong><small>選擇場站、槍頭與 RFID / AutoCharge 情境</small></span><ArrowRight size={18} /></button>
+            <button className="quick-action primary-action" onClick={() => setActiveTab("cpo-sim")}><span className="quick-action-icon"><Zap size={24} /></span><span><strong>執行本機 Mock</strong><small>內建 CPO、Mock eMSP、RFID 與 AutoCharge 情境</small></span><ArrowRight size={18} /></button>
             <button className="quick-action" onClick={() => setActiveTab("hub-router")}><span className="quick-action-icon"><Layers size={24} /></span><span><strong>管理 HUB 路由</strong><small>新增租戶、憑證與資料轉送通道</small></span><ArrowRight size={18} /></button>
-            <button className="quick-action" onClick={() => setActiveTab("emsp-sim")}><span className="quick-action-icon"><UserCheck size={24} /></span><span><strong>發送 eMSP 指令</strong><small>測試遠端開始與停止充電命令</small></span><ArrowRight size={18} /></button>
+            <button className="quick-action" onClick={() => setActiveTab("emsp-sim")}><span className="quick-action-icon"><UserCheck size={24} /></span><span><strong>實體 eMSP 遙測</strong><small>查看 CPO 槍頭狀態並回傳 SoC、電量與 Session</small></span><ArrowRight size={18} /></button>
           </div>
 
           <div className="panel active-panel">
             <div className="panel-header"><div><span className="eyebrow">LIVE SESSIONS</span><h2>進行中的充電</h2></div><button className="text-button" onClick={() => setActiveTab("cpo-sim")}>前往控制台 <ArrowRight size={14} /></button></div>
             {activeSessions.length === 0 ? (
-              <div className="empty-state"><span><Zap size={24} /></span><strong>目前沒有進行中的充電</strong><p>前往 CPO 模擬器，選擇一支可用槍頭開始測試。</p><button onClick={() => setActiveTab("cpo-sim")}>建立模擬充電</button></div>
+              <div className="empty-state"><span><Zap size={24} /></span><strong>目前沒有進行中的本機模擬</strong><p>前往本機 Mock 測試，選擇一支可用槍頭開始。</p><button onClick={() => setActiveTab("cpo-sim")}>建立 Mock 充電</button></div>
             ) : (
               <div className="session-list">{activeSessions.map((session) => (
                 <article className="session-row" key={session.sessionId}><span className="live-indicator" /><div className="session-identity"><strong>{session.evseUid}</strong><small>{session.sessionId}</small></div><div className="session-value"><small>電量</small><strong>{session.kwh.toFixed(2)} kWh</strong></div><div className="session-value"><small>SoC</small><strong>{session.soc}%</strong></div><div className="session-progress"><span style={{ width: `${session.soc}%` }} /></div><button className="stop-button" onClick={() => stopSimulatedCharging(session.evseUid)} title="停止充電"><Square size={14} /> 停止</button></article>

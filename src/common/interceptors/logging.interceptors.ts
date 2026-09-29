@@ -33,8 +33,7 @@ export class LoggingInterceptor implements NestInterceptor {
           this.logger.log(
             `[HTTP SUCCESS] ${method} ${url} Status: ${statusCode} - ${time}ms` +
               `\nRequest Headers: ${JSON.stringify(this.sanitizeHeaders(headers))}` +
-              `\n Request Body: ${JSON.stringify(body || {})}` +
-              `\n Response Body: ${JSON.stringify(resData || {})}`,
+              `\n Request Body: ${JSON.stringify(body || {})}`,
           );
         }
       }),

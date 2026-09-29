@@ -3,8 +3,8 @@ import { Terminal, Zap } from "./Icons";
 
 const pageMeta = {
   dashboard: ["營運總覽", "掌握 HUB 與充電模擬的即時狀態"],
-  "cpo-sim": ["CPO 充電模擬", "選擇場站與槍頭，執行完整充電流程"],
-  "emsp-sim": ["eMSP 指令模擬", "模擬漫遊服務商發送遠端充電指令"],
+  "cpo-sim": ["本機 Mock 測試", "使用內建 CPO 與 Mock eMSP 執行完整充電流程"],
+  "emsp-sim": ["實體 eMSP 串接", "查看 CPO 硬體狀態並回傳 SoC 與 Session 遙測"],
   "hub-router": ["HUB 路由與租戶", "管理 CPO、eMSP 與 OCPI 資料通道"],
   autocharge: ["AutoCharge", "管理車輛與充電身分映射"],
 } as const;
@@ -51,7 +51,7 @@ export default function TopBar() {
         </button>
         {activeTab !== "cpo-sim" && (
           <button className="header-button primary" onClick={() => setActiveTab("cpo-sim")}>
-            <Zap size={16} /> 開始模擬
+            <Zap size={16} /> 本機 Mock
           </button>
         )}
       </div>
