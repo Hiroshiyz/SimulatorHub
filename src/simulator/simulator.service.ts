@@ -86,6 +86,21 @@ export class SimulatorService implements OnModuleInit {
     };
   }
 
+  // Address the request to the EMSP that owns the session so the HUB routes it only there
+  private async applyTargetEmspHeaders(headers: Record<string, string>, emspId?: string) {
+    if (!emspId) return;
+    const targetEmsp = await this.prisma.party.findFirst({
+      where: {
+        id: emspId,
+        role: "EMSP",
+      },
+    });
+    if (targetEmsp) {
+      headers["OCPI-to-party-id"] = targetEmsp.partyId.toUpperCase();
+      headers["OCPI-to-country-code"] = targetEmsp.countryCode.toUpperCase();
+    }
+  }
+
   // --- SIMULATION METHODS (Triggering calls to our CPO Receiver APIs) ---
 
   async sendLocation(
@@ -159,18 +174,7 @@ export class SimulatorService implements OnModuleInit {
     payload: any,
   ) {
     const config = await this.getTenantConfig(countryCode, partyId);
-    if (payload.emsp_id) {
-      const targetEmsp = await this.prisma.party.findFirst({
-        where: {
-          id: payload.emsp_id,
-          role: "EMSP",
-        },
-      });
-      if (targetEmsp) {
-        config.headers["OCPI-to-party-id"] = targetEmsp.partyId.toUpperCase();
-        config.headers["OCPI-to-country-code"] = targetEmsp.countryCode.toUpperCase();
-      }
-    }
+    await this.applyTargetEmspHeaders(config.headers, payload.emsp_id);
     //模擬CPO回傳HUB的Session PUT API
     const url = `${config.baseUrl}/ocpi/2.2.1/sessions/${countryCode}/${partyId}/${sessionId}`;
     try {
@@ -187,9 +191,10 @@ export class SimulatorService implements OnModuleInit {
 
   async sendCdr(payload: any) {
     // For CDR, find the party based on the cdr payload if available
-    const countryCode = payload.ctr_code || "TW";
+    const countryCode = payload.country_code || payload.ctr_code || "TW";
     const partyId = payload.party_id || "NPT";
     const config = await this.getTenantConfig(countryCode, partyId);
+    await this.applyTargetEmspHeaders(config.headers, payload.emsp_id);
     const url = `${config.baseUrl}/ocpi/2.2.1/cdrs`;
     try {
       this.logger.log(`Sending POST CDR to: ${url}`);

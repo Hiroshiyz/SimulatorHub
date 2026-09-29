@@ -119,6 +119,7 @@ export interface ActiveSessionState {
   status?: "ACTIVE" | "COMPLETED" | "INVALID";
   isAuto?: boolean;
   emspId?: string;
+  authorizationReference?: string;
 }
 
 export interface SessionTemplate {

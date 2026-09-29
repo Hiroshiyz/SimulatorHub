@@ -250,6 +250,12 @@ export class SimulatorController {
     return { status_code: 1000, status_message: "Success" };
   }
 
+  // CommandResult callback (response_url) for commands sent by the built-in mock EMSP
+  @Post("mock-emsp/:emspPartyId/ocpi/2.2.1/commands/:command")
+  mockCommandResult() {
+    return { status_code: 1000, status_message: "Success" };
+  }
+
   // --- Routing Rules APIs ---
 
   @Get("routing-rules")

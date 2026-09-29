@@ -165,6 +165,7 @@ interface SimulatorContextType {
     fields: Partial<ActiveSessionState>,
   ) => void;
   releaseActiveChargingSession: (evseUid: string, sessionId?: string) => void;
+  finalizeSessionWithCdr: (session: ActiveSessionState) => Promise<void>;
   tariffPrice: number;
   transmitCdr: (cdrId: string, customCdr?: OcpiCdr) => Promise<void>;
   triggerManualSessionSend: () => Promise<void>;
@@ -361,6 +362,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
   const newSessionIdRef = useRef(newSessionId);
   const locationsRef = useRef(locations);
   const emspsRef = useRef(emsps);
+  const finalizingSessionsRef = useRef(new Set<string>());
 
   useEffect(() => {
     activeSessionsRef.current = activeChargingSessions;
@@ -1190,6 +1192,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       status: "ACTIVE",
       total_cost: { excl_vat: 0.0, incl_vat: 0.0 },
       auth_token_uid: tokenUid,
+      // Lets the eMSP correlate its START_SESSION command with this session
+      ...(customSessId ? { authorization_reference: customSessId } : {}),
       emsp_id: emspId,
       auth_method: authMethod,
       last_updated: startTimeStr,
@@ -1232,6 +1236,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         status: "ACTIVE",
         isAuto: initialIsAuto,
         emspId,
+        authorizationReference: customSessId,
       };
 
       setActiveChargingSessions((prev) => ({
@@ -1336,6 +1341,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       ],
       last_updated: new Date().toISOString(),
       emsp_id: mergedSession.emspId,
+      ...(mergedSession.authorizationReference
+        ? { authorization_reference: mergedSession.authorizationReference }
+        : {}),
       ...sessionTemplateRef.current,
     };
 
@@ -1349,39 +1357,60 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     );
 
     if (mergedSession.status === "COMPLETED" || mergedSession.status === "INVALID") {
-      await handlePatchStatus(mergedSession.locationId, evseUid, "AVAILABLE");
+      await finalizeSessionWithCdr(mergedSession);
+    }
+  };
+
+  // Close out a finished session: free the EVSE, generate the CDR and post it through the HUB
+  const finalizeSessionWithCdr = async (session: ActiveSessionState) => {
+    // Guard against double settlement (e.g. auto-stop at 100% racing a remote STOP_SESSION)
+    if (finalizingSessionsRef.current.has(session.sessionId)) return;
+    finalizingSessionsRef.current.add(session.sessionId);
+
+    try {
+      const status = session.status || "COMPLETED";
+      await handlePatchStatus(session.locationId, session.evseUid, "AVAILABLE");
 
       addLog(
         "CPO_SIM",
         "GENERATING_CDR",
-        `會話結束 (${mergedSession.status})，自動生成 CDR 結算單 (單號: ${mergedSession.sessionId})`,
+        `會話結束 (${status})，自動生成 CDR 結算單 (單號: ${session.sessionId})`,
         "info",
       );
 
+      const { countryCode, partyId } = getLocCpoInfo(session.locationId);
+      const price = typeof tariffPrice === "number" && !isNaN(tariffPrice) ? tariffPrice : 9.5;
+      const kwhValue = typeof session.kwh === "number" && !isNaN(session.kwh) ? session.kwh : 0.0;
+      const computedCost = Math.round(20.0 + kwhValue * price);
       const stopTimeStr = new Date().toISOString();
       const newCdr = {
         id: generateRandomCdrId(),
-        start_date_time: mergedSession.startTime,
+        session_id: session.sessionId,
+        start_date_time: session.startTime,
         end_date_time: stopTimeStr,
-        kwh: mergedSession.kwh,
-        authorization_reference: mergedSession.sessionId,
+        kwh: kwhValue,
+        authorization_reference: session.sessionId,
+        currency: "TWD",
         total_cost: {
           excl_vat: Math.round(computedCost * 0.95),
           incl_vat: computedCost,
         },
-        total_energy: mergedSession.kwh,
+        total_energy: kwhValue,
         total_time: Math.floor(
           (new Date(stopTimeStr).getTime() -
-            new Date(mergedSession.startTime).getTime()) /
+            new Date(session.startTime).getTime()) /
             1000,
         ),
         last_updated: stopTimeStr,
-        ctr_code: countryCode,
-        party_id: partyId,
         settled: false,
         transmission_status: "PENDING",
-        emsp_id: mergedSession.emspId,
+        emsp_id: session.emspId,
         ...cdrTemplateRef.current,
+        // The CDR must carry the CPO that owns the location; the template's defaults would
+        // otherwise make the HUB reject it as a cross-tenant write.
+        country_code: countryCode,
+        ctr_code: countryCode,
+        party_id: partyId,
       };
 
       setCdrPayloadEdit(newCdr);
@@ -1397,15 +1426,48 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         await transmitCdr(newCdr.id, newCdr);
       }
 
-      releaseActiveChargingSession(evseUid, mergedSession.sessionId);
+      releaseActiveChargingSession(session.evseUid, session.sessionId);
 
       addLog(
         "CPO_SIM",
         "SESSION_STOPPED",
-        `充電會話 [${mergedSession.sessionId}] 結束！狀態: ${mergedSession.status}，已自動發送結算單。`,
-        "info",
+        cdrRes.success
+          ? `充電會話 [${session.sessionId}] 結束！狀態: ${status}，已自動發送結算單。`
+          : `充電會話 [${session.sessionId}] 結束！狀態: ${status}，但 CDR 發送失敗，請至 Console 查看錯誤。`,
+        cdrRes.success ? "info" : "error",
       );
+
+      await fetchDatabaseState();
+    } finally {
+      finalizingSessionsRef.current.delete(session.sessionId);
     }
+  };
+
+  // The HUB settled a remote STOP_SESSION (session COMPLETED + CDR); drop the local tracker
+  const handleRemoteSessionStopped = async (data: {
+    session_id: string;
+    evse_uid?: string;
+    cdr_id?: string;
+    result?: string;
+  }) => {
+    const matchedUid = Object.keys(activeSessionsRef.current).find(
+      (uid) => activeSessionsRef.current[uid].sessionId === data.session_id,
+    );
+    if (matchedUid) {
+      releaseActiveChargingSession(matchedUid, data.session_id);
+    }
+
+    addLog(
+      "CPO_SIM",
+      "REMOTE_STOP",
+      data.result === "ACCEPTED"
+        ? `eMSP 遠端停止 Session ${data.session_id}，HUB 已結算並發送 CDR ${data.cdr_id}`
+        : `eMSP 遠端停止 Session ${data.session_id}，但 HUB 結算失敗 (${data.result})`,
+      data.result === "ACCEPTED" ? "info" : "error",
+      data,
+    );
+
+    await fetchDatabaseState();
   };
 
   // Stop charging & Generate CDR
@@ -1563,6 +1625,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         const session = activeChargingSessions[uid];
         // If automatic simulation is disabled, skip auto increment
         if (session.isAuto === false) continue;
+        // Finished sessions are settled by updateSessionTelemetryAndSend, not the telemetry loop
+        if (session.status && session.status !== "ACTIVE") continue;
 
         const powerKw = session.kw !== undefined ? session.kw : 120.0;
         const maxSoc = 100.0;
@@ -1647,6 +1711,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           ],
           last_updated: new Date().toISOString(),
           emsp_id: session.emspId,
+          ...(session.authorizationReference
+            ? { authorization_reference: session.authorizationReference }
+            : {}),
           ...sessionTemplateRef.current,
         };
 
@@ -1680,6 +1747,12 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChargingSessions, locations, tariffPrice]);
 
+  // The SSE listener is registered once, so route it through a ref to always call the latest handlers
+  const sseHandlersRef = useRef({ startSimulatedCharging, handleRemoteSessionStopped });
+  useEffect(() => {
+    sseHandlersRef.current = { startSimulatedCharging, handleRemoteSessionStopped };
+  });
+
   // Server-Sent Events (SSE) Synchronization listener
   useEffect(() => {
     const eventSource = new EventSource("/simulator/events");
@@ -1703,7 +1776,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
               "info",
               parsed.data,
             );
-            startSimulatedCharging(
+            sseHandlersRef.current.startSimulatedCharging(
               locId,
               evseU,
               false,
@@ -1714,24 +1787,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
               emsp_id || null,
             );
           }
-        } else if (parsed.type === "STOP_SESSION") {
-          const { session_id } = parsed.data;
-          if (session_id) {
-            const matchedUid = Object.keys(activeSessionsRef.current).find(
-              (uid) => activeSessionsRef.current[uid].sessionId === session_id,
-            );
-
-            if (matchedUid) {
-              addLog(
-                "CPO_SIM",
-                "REMOTE_STOP",
-                `收到遠端結束指令 via SSE: ${session_id}`,
-                "info",
-                parsed.data,
-              );
-              stopSimulatedCharging(matchedUid);
-            }
-          }
+        } else if (parsed.type === "SESSION_STOPPED") {
+          void sseHandlersRef.current.handleRemoteSessionStopped(parsed.data);
         }
       } catch (err) {
         console.error("Failed to parse SSE command payload:", err);
@@ -1745,7 +1802,6 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     return () => {
       eventSource.close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -1785,6 +1841,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         updateSessionTelemetryAndSend,
         updateSessionTelemetryOnly,
         releaseActiveChargingSession,
+        finalizeSessionWithCdr,
         tariffPrice,
 
         // Phase 2 states

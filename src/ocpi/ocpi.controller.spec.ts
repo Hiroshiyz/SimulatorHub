@@ -138,8 +138,16 @@ describe("OcpiController", () => {
   describe("postCdr", () => {
     it("should allow matching tenant to post cdr", async () => {
       const payload = { id: "cdr-1", ctr_code: "TW", party_id: "NPT" };
-      await controller.postCdr(mockParty, payload);
-      expect(service.handlePostCdr).toHaveBeenCalledWith(mockParty, payload);
+      await controller.postCdr(mockParty, payload, {
+        "ocpi-to-party-id": "EMSP",
+        "ocpi-to-country-code": "TW",
+      });
+      expect(service.handlePostCdr).toHaveBeenCalledWith(
+        mockParty,
+        payload,
+        "EMSP",
+        "TW",
+      );
     });
   });
 

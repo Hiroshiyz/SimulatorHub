@@ -147,12 +147,19 @@ export class OcpiController {
   async postCdr(
     @CurrentParty() party: PartyContext,
     @Body() body: any,
+    @Headers() headers: any,
   ) {
     // For CDRs, the party sending must still match the CDR's CPO country_code / party_id if specified in the payload
-    if (body.ctr_code && body.party_id) {
-      this.validatePartyMatch(party, body.ctr_code, body.party_id);
+    const cdrCountryCode = body.country_code || body.ctr_code;
+    if (cdrCountryCode && body.party_id) {
+      this.validatePartyMatch(party, cdrCountryCode, body.party_id);
     }
-    return this.ocpiService.handlePostCdr(party, body);
+    return this.ocpiService.handlePostCdr(
+      party,
+      body,
+      headers["ocpi-to-party-id"],
+      headers["ocpi-to-country-code"],
+    );
   }
 
   // --- OCPI Commands (Endpoints that receive requests from your EMSP) ---

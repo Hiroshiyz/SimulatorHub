@@ -78,9 +78,9 @@ export default function EmspSimPage({ mode = "real", embedded = false }: EmspSim
     sessions,
     cdrs,
     handleSendEmspCommand,
-    handlePatchStatus,
-    releaseActiveChargingSession,
+    finalizeSessionWithCdr,
     fetchDatabaseState,
+    tariffPrice,
     addLog,
     showToast,
   } = useSimulator();
@@ -202,6 +202,13 @@ export default function EmspSimPage({ mode = "real", embedded = false }: EmspSim
     }
   };
 
+  // Same pricing as the CPO simulator: 20 TWD session fee + kWh × tariff, VAT included
+  const estimateTotalCost = (kwh: number) => {
+    const price = Number.isFinite(tariffPrice) ? tariffPrice : 9.5;
+    const inclVat = Math.round(20.0 + (Number.isFinite(kwh) ? kwh : 0) * price);
+    return { excl_vat: Math.round(inclVat * 0.95), incl_vat: inclVat };
+  };
+
   const getTelemetryDraft = (session: ExtendedDbSession): TelemetryDraft =>
     telemetryDrafts[session.id] || {
       soc: telemetryValue(session, "STATE_OF_CHARGE", 0),
@@ -241,6 +248,8 @@ export default function EmspSimPage({ mode = "real", embedded = false }: EmspSim
       evse_uid: session.evseUid,
       status: draft.status,
       emsp_id: activeEmspId,
+      currency: session.rawJson?.currency || "TWD",
+      total_cost: estimateTotalCost(draft.kwh),
       charging_periods: [{
         start_date_time: startTime,
         dimensions: [
@@ -265,8 +274,18 @@ export default function EmspSimPage({ mode = "real", embedded = false }: EmspSim
       );
       if (!response.ok) throw new Error(await response.text());
       if (draft.status === "COMPLETED" || draft.status === "INVALID") {
-        await handlePatchStatus(session.locationId, session.evseUid, "AVAILABLE");
-        releaseActiveChargingSession(session.evseUid, session.id);
+        // Frees the EVSE, posts the CDR through the HUB and releases the local tracker
+        await finalizeSessionWithCdr({
+          sessionId: session.id,
+          evseUid: session.evseUid,
+          locationId: session.locationId,
+          kwh: draft.kwh,
+          soc: draft.soc,
+          cost: 0,
+          startTime,
+          status: draft.status as "COMPLETED" | "INVALID",
+          emspId: activeEmspId,
+        });
       }
       addLog(
         "CPO_SIM",
@@ -481,7 +500,7 @@ export default function EmspSimPage({ mode = "real", embedded = false }: EmspSim
                   return (
                     <article className="real-telemetry-card" key={`${session.partyId}-${session.id}`}>
                       <div className="real-telemetry-header">
-                        <div><strong>{session.id}</strong><small>{session.evseUid}</small></div>
+                        <div><strong>{session.id}</strong><small>{session.evseUid} · 預估 ${estimateTotalCost(draft.kwh).incl_vat} TWD</small></div>
                         <span className={`evse-badge ${draft.status === "ACTIVE" ? "charging" : "available"}`}>{draft.status}</span>
                       </div>
                       <div className="telemetry-control-grid">

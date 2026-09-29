@@ -41,6 +41,12 @@ export class RoutingProducerService {
     const mockBaseUrl = this.configService.get<string>("EMSP_BASE_URL");
     const mockTokenB = this.configService.get<string>("CREDENTIALS_TOKEN_B");
 
+    // Addressing the HUB itself means "broadcast to every matching EMSP", not a specific target
+    if (targetEmspPartyId?.toUpperCase() === "HUB") {
+      targetEmspCountryCode = undefined;
+      targetEmspPartyId = undefined;
+    }
+
     for (const rule of rules) {
       if (
         targetEmspCountryCode &&
