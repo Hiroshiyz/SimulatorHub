@@ -138,7 +138,7 @@ export class EmspService {
         if (emsp.credential && emsp.credential.url && emsp.credential.tokenB) {
           const url = `${emsp.credential.url}/ocpi/2.2.1/${subPath}`;
           const headers = {
-            Authorization: `bearer ${emsp.credential.tokenB}`,
+            Authorization: `Bearer ${emsp.credential.tokenB}`,
             "Content-Type": "application/json; charset=utf-8",
             "OCPI-to-party-id": emsp.partyId,
             "OCPI-to-country-code": emsp.countryCode,

@@ -100,7 +100,7 @@ export class RoutingProducerService {
 
       // Package standard headers
       const headers = {
-        Authorization: `bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json; charset=utf-8",
         "OCPI-to-party-id": rule.emspPartyId,
         "OCPI-to-country-code": rule.emspCountryCode,

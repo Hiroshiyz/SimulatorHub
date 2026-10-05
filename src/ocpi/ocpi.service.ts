@@ -537,7 +537,7 @@ export class OcpiService {
         {
           timeout: 5000,
           headers: {
-            Authorization: `bearer ${credential?.tokenB || ""}`,
+            Authorization: `Bearer ${credential?.tokenB || ""}`,
             "Content-Type": "application/json; charset=utf-8",
             "OCPI-to-party-id": emsp.partyId,
             "OCPI-to-country-code": emsp.countryCode,

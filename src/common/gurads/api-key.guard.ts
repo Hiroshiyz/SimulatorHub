@@ -23,8 +23,9 @@ export class ApiKeyGuard implements CanActivate {
     }
 
     // Parse format "Token <token>" or "Bearer <token>"
-    const parts = authHeader.split(" ");
-    if (parts.length !== 2 || (parts[0] !== "Token" && parts[0] !== "Bearer")) {
+    const parts = authHeader.trim().split(/\s+/);
+    const scheme = parts[0]?.toLowerCase();
+    if (parts.length !== 2 || (scheme !== "token" && scheme !== "bearer")) {
       throw new UnauthorizedException("Invalid Authorization header format");
     }
 

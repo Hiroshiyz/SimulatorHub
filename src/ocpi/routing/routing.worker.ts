@@ -32,7 +32,7 @@ export class OcpiRoutingWorker extends WorkerHost {
     // Prepare headers
     const requestHeaders = {
       ...headers,
-      Authorization: `bearer ${decryptedToken}`,
+      Authorization: `Bearer ${decryptedToken}`,
     };
 
     let response;

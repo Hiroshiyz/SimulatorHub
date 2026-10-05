@@ -91,7 +91,7 @@ describe("OcpiRoutingWorker", () => {
       { id: "loc-1" },
       expect.objectContaining({
         headers: expect.objectContaining({
-          Authorization: "bearer raw-token",
+          Authorization: "Bearer raw-token",
         }),
       }),
     );

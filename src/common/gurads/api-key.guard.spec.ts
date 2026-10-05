@@ -59,6 +59,22 @@ describe("ApiKeyGuard", () => {
     });
   });
 
+  it("should accept a case-insensitive authorization scheme", async () => {
+    const context = createMockContext({
+      authorization: "bearer mock_token_b_12345",
+    });
+    mockRedis.getClient().get.mockResolvedValueOnce(
+      JSON.stringify({
+        id: "tenant-123",
+        countryCode: "TW",
+        partyId: "NPT",
+        role: "CPO",
+      }),
+    );
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+  });
+
   it("should allow request with valid Bearer token from Database when cache misses", async () => {
     const context = createMockContext({
       authorization: "Token mock_token_b_12345",
