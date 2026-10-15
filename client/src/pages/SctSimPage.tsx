@@ -24,6 +24,7 @@ function buildSctLocation() {
   const evse = (n: number) => ({
     uid: `SCT-EVSE-00${n}`,
     evse_id: `TW*SCT*E00${n}`,
+    physical_reference: `SCT-0${n}`,
     status: "AVAILABLE",
     capabilities: ["REMOTE_START_STOP_CAPABLE"],
     connectors: [
