@@ -11,7 +11,10 @@ import {
   isSctParty,
   sctBufferMinutes,
 } from "../billing/sctIdleFee";
-import type { ActiveSessionState } from "../types/simulator";
+import type { ActiveSessionState, Location } from "../types/simulator";
+import EmspSimPage from "./EmspSimPage";
+
+const isSctLocation = (location: Location) => isSctParty(location.party?.partyId);
 
 const SCT_LOCATION_ID = "SCT-LOC-001";
 const SCT_TOKEN_B = "mock_sct_token_b_123";
@@ -106,7 +109,7 @@ export default function SctSimPage() {
     showToast,
   } = useSimulator();
 
-  const sctLocations = locations.filter((l) => isSctParty(l.party?.partyId));
+  const sctLocations = locations.filter(isSctLocation);
   const mockEmsps = emsps.filter((e) => e.url?.includes("/mock-emsp/"));
 
   const [locationId, setLocationId] = useState("");
@@ -257,7 +260,7 @@ export default function SctSimPage() {
                 </select>
               </div>
               <p style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                也可以從 Mock eMSP 下 START_SESSION / STOP_SESSION。星舟的 STOP_SESSION 只會停止充電，Session 維持 ACTIVE，直到在下方按「拔槍」。
+                也可以用頁面下方的 Mock eMSP 下 START_SESSION / STOP_SESSION。星舟的 STOP_SESSION 只會停止充電，Session 維持 ACTIVE，直到按「拔槍並結算」。
               </p>
             </div>
           )}
@@ -337,6 +340,13 @@ export default function SctSimPage() {
           </div>
         </div>
       )}
+
+      <section className="workspace-section-divider">
+        <span className="eyebrow">BUILT-IN MOCK EMSP</span>
+        <h2>Mock eMSP 遠端啟停（僅星舟場站）</h2>
+        <p>模擬 eMSP 對星舟下 START / STOP_SESSION，並查看 eMSP 收到的 Session 與 CDR。</p>
+      </section>
+      <EmspSimPage mode="mock" embedded locationFilter={isSctLocation} />
 
       {lastSctCdr && (
         <div className="card">

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSimulator } from "../context/SimulatorContext";
+import type { Location } from "../types/simulator";
 import {
   UserCheck,
   Zap,
@@ -40,6 +41,7 @@ interface ExtendedDbCdr {
   partyId: string;
   rawJson?: {
     emsp_id?: string;
+    party_id?: string;
     total_cost?: {
       incl_vat?: number;
     };
@@ -51,6 +53,8 @@ interface ExtendedDbCdr {
 interface EmspSimPageProps {
   mode?: "mock" | "real";
   embedded?: boolean;
+  // Limits the target stations, and the sessions/CDRs shown, to these locations (e.g. SCT only)
+  locationFilter?: (location: Location) => boolean;
 }
 
 interface TelemetryDraft {
@@ -66,7 +70,7 @@ const telemetryValue = (session: ExtendedDbSession, type: string, fallback: numb
   return typeof value === "number" ? value : fallback;
 };
 
-export default function EmspSimPage({ mode = "real", embedded = false }: EmspSimPageProps) {
+export default function EmspSimPage({ mode = "real", embedded = false, locationFilter }: EmspSimPageProps) {
   const {
     locations,
     selectedLocationId,
@@ -107,12 +111,24 @@ export default function EmspSimPage({ mode = "real", embedded = false }: EmspSim
   const activeEmspId = selectedEmspIdForCmd || defaultEmsp?.id || "";
 
   const activeCommandEmsp = availableEmsps.find((e) => e.id === activeEmspId);
-  const matchedLocation = locations.find((l) => l.id === selectedLocationId);
+  const targetLocations = locationFilter ? locations.filter(locationFilter) : locations;
+  const targetLocationIds = new Set(targetLocations.map((l) => l.id));
+  const targetPartyIds = new Set(targetLocations.map((l) => l.party?.partyId?.toUpperCase()));
+  const matchedLocation = targetLocations.find((l) => l.id === selectedLocationId);
   const matchedEvses = matchedLocation?.evses || [];
+
+  // The station selection is shared with the other pages; fall back to one this panel may target
+  useEffect(() => {
+    if (!locationFilter || matchedLocation || targetLocations.length === 0) return;
+    setSelectedLocationId(targetLocations[0].id);
+    setSelectedEvseUid(targetLocations[0].evses[0]?.uid ?? null);
+  }, [locationFilter, matchedLocation, targetLocations, setSelectedLocationId, setSelectedEvseUid]);
 
   // Filter DB logs strictly by the selected EMSP Database ID (emsp_id in rawJson)
   const matchedSessions = (sessions as unknown as ExtendedDbSession[]).filter(
-    (s) => s.rawJson?.emsp_id === activeEmspId,
+    (s) =>
+      s.rawJson?.emsp_id === activeEmspId &&
+      (!locationFilter || targetLocationIds.has(s.locationId)),
   );
   const filteredSessions = Array.from(
     new Map(matchedSessions.map((session) => [session.id, session])).values(),
@@ -122,7 +138,9 @@ export default function EmspSimPage({ mode = "real", embedded = false }: EmspSim
     (session) => historyStatusFilter === "ALL" || session.status === historyStatusFilter,
   );
   const filteredCdrs = (cdrs as unknown as ExtendedDbCdr[]).filter(
-    (c) => c.rawJson?.emsp_id === activeEmspId,
+    (c) =>
+      c.rawJson?.emsp_id === activeEmspId &&
+      (!locationFilter || targetPartyIds.has(c.rawJson?.party_id?.toUpperCase())),
   );
 
   useEffect(() => {
@@ -638,13 +656,13 @@ export default function EmspSimPage({ mode = "real", embedded = false }: EmspSim
                       onChange={(e) => {
                         const locId = e.target.value;
                         setSelectedLocationId(locId);
-                        const loc = locations.find((l) => l.id === locId);
+                        const loc = targetLocations.find((l) => l.id === locId);
                         if (loc && loc.evses.length > 0) {
                           setSelectedEvseUid(loc.evses[0].uid);
                         }
                       }}
                     >
-                      {locations.map((loc) => (
+                      {targetLocations.map((loc) => (
                         <option key={loc.id} value={loc.id}>
                           {loc.name || loc.id} ({loc.party?.countryCode || "TW"}-{loc.party?.partyId || "EVZ"})
                         </option>

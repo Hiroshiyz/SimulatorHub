@@ -11,6 +11,9 @@ import isChargingIcon from "../assets/isCharging.svg";
 import noChargingIcon from "../assets/noCharging.svg";
 import EmspSimPage from "./EmspSimPage";
 import { isSctParty } from "../billing/sctIdleFee";
+import type { Location } from "../types/simulator";
+
+const isMockLocation = (location: Location) => !isSctParty(location.party?.partyId);
 
 const OCPP_TO_OCPI: Record<string, string> = {
   Available: "AVAILABLE",
@@ -593,7 +596,7 @@ export default function CpoSimPage() {
   );
 
   // SCT stations are operated from the dedicated 星舟 page so the two flows do not mix
-  const mockLocations = locations.filter((l) => !isSctParty(l.party?.partyId));
+  const mockLocations = locations.filter(isMockLocation);
 
   useEffect(() => {
     const selected = locations.find((l) => l.id === selectedLocationId);
@@ -1263,7 +1266,7 @@ export default function CpoSimPage() {
         <h2>內建 Mock eMSP 指令與接收結果</h2>
         <p>遠端啟停、Session 與 CDR 都集中在本機 Mock 測試頁，不會混入實體串接租戶。</p>
       </section>
-      <EmspSimPage mode="mock" embedded />
+      <EmspSimPage mode="mock" embedded locationFilter={isMockLocation} />
     </div>
   );
 }
