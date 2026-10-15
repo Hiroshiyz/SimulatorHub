@@ -10,6 +10,7 @@ import { useState, useEffect } from "react";
 import isChargingIcon from "../assets/isCharging.svg";
 import noChargingIcon from "../assets/noCharging.svg";
 import EmspSimPage from "./EmspSimPage";
+import { isSctParty } from "../billing/sctIdleFee";
 
 const OCPP_TO_OCPI: Record<string, string> = {
   Available: "AVAILABLE",
@@ -591,8 +592,20 @@ export default function CpoSimPage() {
     "location",
   );
 
+  // SCT stations are operated from the dedicated 星舟 page so the two flows do not mix
+  const mockLocations = locations.filter((l) => !isSctParty(l.party?.partyId));
+
+  useEffect(() => {
+    const selected = locations.find((l) => l.id === selectedLocationId);
+    const fallback = mockLocations[0];
+    if (selected && isSctParty(selected.party?.partyId) && fallback) {
+      setSelectedLocationId(fallback.id);
+      setSelectedEvseUid(fallback.evses[0]?.uid ?? null);
+    }
+  }, [locations, mockLocations, selectedLocationId, setSelectedLocationId, setSelectedEvseUid]);
+
   // Derived state
-  const matchedLocation = locations.find((l) => l.id === selectedLocationId);
+  const matchedLocation = mockLocations.find((l) => l.id === selectedLocationId);
   const matchedEvses = matchedLocation?.evses || [];
 
   // Update selected EVSE status state when selection changes
@@ -788,7 +801,7 @@ export default function CpoSimPage() {
                       }
                     }}
                   >
-                    {locations.map((loc) => (
+                    {mockLocations.map((loc) => (
                       <option key={loc.id} value={loc.id}>
                         {loc.name || loc.id} ({loc.party?.countryCode || "TW"}-{loc.party?.partyId || "EVZ"})
                       </option>

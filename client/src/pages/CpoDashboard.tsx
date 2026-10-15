@@ -8,6 +8,7 @@ import ToastContainer from "../components/ToastContainer";
 // Import 5 new tabs
 import Dashboard from "./Dashboard";
 import CpoSimPage from "./CpoSimPage";
+import SctSimPage from "./SctSimPage";
 import EmspSimPage from "./EmspSimPage";
 import HubRouterPage from "./HubRouterPage";
 // import AutoChargePage from "./AutoChargePage";
@@ -27,6 +28,7 @@ export default function CpoDashboard() {
           {activeTab !== "dashboard" && <FlowDiagram />}
           {activeTab === "dashboard" && <Dashboard />}
           {activeTab === "cpo-sim" && <CpoSimPage />}
+          {activeTab === "sct-sim" && <SctSimPage />}
           {activeTab === "emsp-sim" && <EmspSimPage />}
           {activeTab === "hub-router" && <HubRouterPage />}
           {/* {activeTab === "autocharge" && <AutoChargePage />} */}

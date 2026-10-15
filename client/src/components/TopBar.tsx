@@ -4,6 +4,7 @@ import { Terminal, Zap } from "./Icons";
 const pageMeta = {
   dashboard: ["營運總覽", "掌握 HUB 與充電模擬的即時狀態"],
   "cpo-sim": ["本機 Mock 測試", "使用內建 CPO 與 Mock eMSP 執行完整充電流程"],
+  "sct-sim": ["星舟 SCT 佔槍費模擬", "依星舟快充佔槍費規格 v1.6 模擬充電、緩衝、佔槍與拔槍結算"],
   "emsp-sim": ["實體 eMSP 串接", "查看 CPO 硬體狀態並回傳 SoC 與 Session 遙測"],
   "hub-router": ["HUB 路由與租戶", "管理 CPO、eMSP 與 OCPI 資料通道"],
   autocharge: ["AutoCharge", "管理車輛與充電身分映射"],

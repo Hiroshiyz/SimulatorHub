@@ -18,6 +18,7 @@ describe("OcpiService", () => {
       findUnique: jest.fn().mockResolvedValue(null),
       findFirst: jest.fn().mockResolvedValue(null),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      update: jest.fn(),
     },
     cdr: { upsert: jest.fn() },
     credential: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -251,6 +252,47 @@ describe("OcpiService", () => {
       );
     });
 
+    it("should issue the CDR with total_time in hours", async () => {
+      mockPrismaService.session.findFirst.mockResolvedValueOnce(activeSession);
+      jest.useFakeTimers({ doNotFake: ["setImmediate", "nextTick"] });
+      jest.setSystemTime(new Date("2026-09-29T00:30:00Z"));
+
+      await service.handleStopSession(emspParty, { session_id: "sess_1" });
+      await flushSettlement();
+      await flushSettlement();
+      jest.useRealTimers();
+
+      expect(mockPrismaService.cdr.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            rawJson: expect.objectContaining({ total_time: 0.5 }),
+          }),
+        }),
+      );
+    });
+
+    it("should keep an idle-fee (SCT) session ACTIVE and only stop charging", async () => {
+      const sctParty = { ...mockParty, partyId: "SCT" };
+      mockPrismaService.session.findFirst.mockResolvedValueOnce({ ...activeSession, party: sctParty });
+      const events: any[] = [];
+      const sub = service.commands$.subscribe((e) => events.push(e));
+
+      const response = await service.handleStopSession(emspParty, { session_id: "sess_1" });
+      await flushSettlement();
+      await flushSettlement();
+      sub.unsubscribe();
+
+      expect(response.data).toEqual({ result: "ACCEPTED", timeout: 30 });
+      expect(mockPrismaService.session.updateMany).not.toHaveBeenCalled();
+      expect(mockPrismaService.cdr.upsert).not.toHaveBeenCalled();
+      expect(events).toEqual([
+        {
+          type: "SESSION_CHARGING_STOPPED",
+          data: { session_id: "sess_1", location_id: "loc_1", evse_uid: "evse-1", emsp_id: "emsp-1" },
+        },
+      ]);
+    });
+
     it("should reject a duplicate STOP while the session is already stopping", async () => {
       mockPrismaService.session.findFirst.mockResolvedValueOnce(activeSession);
       mockPrismaService.session.updateMany.mockResolvedValueOnce({ count: 0 });
@@ -258,6 +300,60 @@ describe("OcpiService", () => {
 
       expect(response.data).toEqual({ result: "REJECTED", timeout: 30 });
       expect(mockPrismaService.cdr.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("handlePatchSession", () => {
+    const activeSession = {
+      partyId: "tenant-123",
+      id: "sess_1",
+      status: "ACTIVE",
+      kwh: 6,
+      rawJson: { id: "sess_1", status: "ACTIVE", kwh: 6, emsp_id: "emsp-1" },
+    };
+
+    it("should reject an unknown session", async () => {
+      const response = await service.handlePatchSession(mockParty, "TW", "NPT", "sess_x", {
+        status: "COMPLETED",
+      });
+
+      expect(response.status_code).toBe(2001);
+      expect(mockRoutingProducerService.enqueueForwardTask).not.toHaveBeenCalled();
+    });
+
+    it("should merge the patch and forward only the patched fields", async () => {
+      mockPrismaService.session.findUnique.mockResolvedValueOnce(activeSession);
+      const patch = { status: "COMPLETED", total_cost: { excl_vat: 53, incl_vat: 53 } };
+
+      const response = await service.handlePatchSession(mockParty, "TW", "NPT", "sess_1", patch, "EMP", "TW");
+
+      expect(response.status_code).toBe(1000);
+      expect(mockPrismaService.session.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: "COMPLETED",
+            rawJson: expect.objectContaining({ emsp_id: "emsp-1", status: "COMPLETED", kwh: 6 }),
+          }),
+        }),
+      );
+      expect(mockRoutingProducerService.enqueueForwardTask).toHaveBeenCalledWith(
+        "PATCH",
+        "sessions/TW/NPT/sess_1",
+        patch,
+        "TW",
+        "NPT",
+        "TW",
+        "EMP",
+      );
+    });
+
+    it("should not modify a session that is already COMPLETED", async () => {
+      mockPrismaService.session.findUnique.mockResolvedValueOnce({ ...activeSession, status: "COMPLETED" });
+
+      await service.handlePatchSession(mockParty, "TW", "NPT", "sess_1", { kwh: 9 });
+
+      expect(mockPrismaService.session.update).not.toHaveBeenCalled();
+      expect(mockRoutingProducerService.enqueueForwardTask).not.toHaveBeenCalled();
     });
   });
 });

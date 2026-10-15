@@ -1,3 +1,5 @@
+import type { OcpiTariff } from "../billing/sctIdleFee";
+
 export interface EvseConnector {
   id: string;
   format: string;
@@ -120,6 +122,13 @@ export interface ActiveSessionState {
   isAuto?: boolean;
   emspId?: string;
   authorizationReference?: string;
+  tokenUid?: string;
+  // Idle-fee (星舟 SCT) sessions stay ACTIVE after charging until the vehicle is unplugged
+  billingProfile?: "SCT";
+  phase?: "CHARGING" | "IDLE";
+  chargingEndTime?: string;
+  idleBillingPushed?: boolean;
+  tariffSnapshot?: OcpiTariff;
 }
 
 export interface SessionTemplate {

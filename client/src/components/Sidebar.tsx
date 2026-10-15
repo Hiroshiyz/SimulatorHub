@@ -1,5 +1,5 @@
 import { useSimulator } from "../context/SimulatorContext";
-import { Zap, Cpu, Layers, UserCheck } from "./Icons";
+import { Zap, Cpu, Layers, UserCheck, DollarSign } from "./Icons";
 
 export default function Sidebar() {
   const {
@@ -18,7 +18,14 @@ export default function Sidebar() {
       .map((emsp) => emsp.id),
   );
   const activeSessionsCount = Object.values(activeChargingSessions).filter(
-    (session) => session.status === "ACTIVE" && session.emspId && mockEmspIds.has(session.emspId),
+    (session) =>
+      session.status === "ACTIVE" &&
+      session.billingProfile !== "SCT" &&
+      session.emspId &&
+      mockEmspIds.has(session.emspId),
+  ).length;
+  const sctSessionsCount = Object.values(activeChargingSessions).filter(
+    (session) => session.billingProfile === "SCT",
   ).length;
 
   return (
@@ -57,6 +64,19 @@ export default function Sidebar() {
             <Cpu size={18} />
             <span><strong>本機 Mock 測試</strong><small>內建 CPO、eMSP 與充電流程</small></span>
             {activeSessionsCount > 0 && <b className="nav-count">{activeSessionsCount}</b>}
+          </button>
+        </li>
+        <li>
+          <button
+            className={`nav-item ${activeTab === "sct-sim" ? "active" : ""}`}
+            onClick={() => {
+              setActiveTab("sct-sim");
+              setSidebarOpen(false);
+            }}
+          >
+            <DollarSign size={18} />
+            <span><strong>星舟 SCT 佔槍費</strong><small>充電、緩衝、佔槍與拔槍結算</small></span>
+            {sctSessionsCount > 0 && <b className="nav-count">{sctSessionsCount}</b>}
           </button>
         </li>
         <li>

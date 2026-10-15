@@ -189,6 +189,29 @@ export class SimulatorService implements OnModuleInit {
     }
   }
 
+  async patchSession(
+    countryCode: string,
+    partyId: string,
+    sessionId: string,
+    payload: any,
+  ) {
+    const config = await this.getTenantConfig(countryCode, partyId);
+    // emsp_id only addresses the request; it is not part of the OCPI PATCH body
+    const { emsp_id: emspId, ...patchBody } = payload;
+    await this.applyTargetEmspHeaders(config.headers, emspId);
+    const url = `${config.baseUrl}/ocpi/2.2.1/sessions/${countryCode}/${partyId}/${sessionId}`;
+    try {
+      this.logger.log(`Sending PATCH Session to: ${url}`);
+      const res = await axios.patch(url, patchBody, { headers: config.headers });
+      return res.data;
+    } catch (error: any) {
+      throw new HttpException(
+        error.response?.data || `Failed to patch Session: ${error.message}`,
+        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   async sendCdr(payload: any) {
     // For CDR, find the party based on the cdr payload if available
     const countryCode = payload.country_code || payload.ctr_code || "TW";
@@ -361,36 +384,60 @@ export class SimulatorService implements OnModuleInit {
     return this.emspService.registerEmsp(data);
   }
 
-  async saveEmspSession(emspPartyId: string, sessionId: string, payload: any) {
-    let party = await this.prisma.party.findFirst({
+  private async findMockEmspParty(emspPartyId: string) {
+    const party = await this.prisma.party.findFirst({
       where: {
         partyId: emspPartyId.toUpperCase(),
         role: "EMSP",
       },
     });
+    if (party) return party;
 
-    if (!party) {
-      const credentials = await this.prisma.credential.findMany({
-        where: {
-          url: {
-            contains: `/mock-emsp/${emspPartyId}`,
-            mode: "insensitive",
-          },
+    const credentials = await this.prisma.credential.findMany({
+      where: {
+        url: {
+          contains: `/mock-emsp/${emspPartyId}`,
+          mode: "insensitive",
         },
-        include: {
-          party: true,
-        },
-      });
-      const matchedCred = credentials.find((c) => c.party.role === "EMSP");
-      if (matchedCred) {
-        party = matchedCred.party;
-      }
-    }
-
-    if (!party) {
+      },
+      include: {
+        party: true,
+      },
+    });
+    const matchedCred = credentials.find((c) => c.party.role === "EMSP");
+    if (!matchedCred) {
       this.logger.warn(`EMSP party not found: ${emspPartyId}`);
+      return null;
+    }
+    return matchedCred.party;
+  }
+
+  async patchEmspSession(emspPartyId: string, sessionId: string, payload: any) {
+    const party = await this.findMockEmspParty(emspPartyId);
+    if (!party) return;
+
+    const existing = await this.prisma.session.findUnique({
+      where: { partyId_id: { partyId: party.id, id: sessionId } },
+    });
+    if (!existing) {
+      this.logger.warn(`Mock EMSP ${emspPartyId} received PATCH for unknown session ${sessionId}`);
       return;
     }
+
+    const merged = { ...(existing.rawJson as Record<string, any>), ...payload };
+    await this.prisma.session.update({
+      where: { partyId_id: { partyId: party.id, id: sessionId } },
+      data: {
+        status: merged.status,
+        kwh: merged.kwh || 0.0,
+        rawJson: merged,
+      },
+    });
+  }
+
+  async saveEmspSession(emspPartyId: string, sessionId: string, payload: any) {
+    const party = await this.findMockEmspParty(emspPartyId);
+    if (!party) return;
     await this.prisma.session.upsert({
       where: {
         partyId_id: {
@@ -421,35 +468,8 @@ export class SimulatorService implements OnModuleInit {
     const cdrId = payload.id;
     if (!cdrId) return;
 
-    let party = await this.prisma.party.findFirst({
-      where: {
-        partyId: emspPartyId.toUpperCase(),
-        role: "EMSP",
-      },
-    });
-
-    if (!party) {
-      const credentials = await this.prisma.credential.findMany({
-        where: {
-          url: {
-            contains: `/mock-emsp/${emspPartyId}`,
-            mode: "insensitive",
-          },
-        },
-        include: {
-          party: true,
-        },
-      });
-      const matchedCred = credentials.find((c) => c.party.role === "EMSP");
-      if (matchedCred) {
-        party = matchedCred.party;
-      }
-    }
-
-    if (!party) {
-      this.logger.warn(`EMSP party not found: ${emspPartyId}`);
-      return;
-    }
+    const party = await this.findMockEmspParty(emspPartyId);
+    if (!party) return;
 
     await this.prisma.cdr.upsert({
       where: {

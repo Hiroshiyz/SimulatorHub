@@ -141,6 +141,28 @@ export class OcpiController {
     );
   }
 
+  @Patch("ocpi/2.2.1/sessions/:countryCode/:partyId/:sessionId")
+  @HttpCode(200)
+  async patchSession(
+    @CurrentParty() party: PartyContext,
+    @Param("countryCode") countryCode: string,
+    @Param("partyId") partyId: string,
+    @Param("sessionId") sessionId: string,
+    @Body() body: any,
+    @Headers() headers: any,
+  ) {
+    this.validatePartyMatch(party, countryCode, partyId);
+    return this.ocpiService.handlePatchSession(
+      party,
+      countryCode,
+      partyId,
+      sessionId,
+      body,
+      headers["ocpi-to-party-id"],
+      headers["ocpi-to-country-code"],
+    );
+  }
+
   // --- OCPI CDRs Receiver ---
   @Post("ocpi/2.2.1/cdrs")
   @HttpCode(200)

@@ -81,6 +81,21 @@ export class SimulatorController {
     );
   }
 
+  @Post("simulate/sessions/patch/:countryCode/:partyId/:sessionId")
+  async simulatePatchSession(
+    @Param("countryCode") countryCode: string,
+    @Param("partyId") partyId: string,
+    @Param("sessionId") sessionId: string,
+    @Body() body: any,
+  ) {
+    return this.simulatorService.patchSession(
+      countryCode,
+      partyId,
+      sessionId,
+      body,
+    );
+  }
+
   @Post("simulate/cdrs")
   async simulateSendCdr(@Body() body: any) {
     return this.simulatorService.sendCdr(body);
@@ -238,6 +253,18 @@ export class SimulatorController {
     @Body() body: any,
   ) {
     await this.simulatorService.saveEmspSession(emspPartyId, sessionId, body);
+    return { status_code: 1000, status_message: "Success" };
+  }
+
+  @Patch(
+    "mock-emsp/:emspPartyId/ocpi/2.2.1/sessions/:countryCode/:partyId/:sessionId",
+  )
+  async mockPatchSession(
+    @Param("emspPartyId") emspPartyId: string,
+    @Param("sessionId") sessionId: string,
+    @Body() body: any,
+  ) {
+    await this.simulatorService.patchEmspSession(emspPartyId, sessionId, body);
     return { status_code: 1000, status_message: "Success" };
   }
 

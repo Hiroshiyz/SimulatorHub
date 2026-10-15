@@ -133,7 +133,7 @@ export default function TransactionsTab() {
                         NT$ {totalCost}
                       </td>
                       <td style={{ padding: "12px" }}>
-                        {totalTime} 秒
+                        {totalTime} 小時
                       </td>
                       <td style={{ padding: "12px", color: "var(--text-muted)" }}>
                         {new Date(cdr.createdAt).toLocaleString()}
