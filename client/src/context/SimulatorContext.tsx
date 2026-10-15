@@ -13,6 +13,7 @@ import type {
   EmspChannel,
   OcpiSession,
   OcpiCdr,
+  OcpiCdrToken,
   OcpiTotalCost,
   CpoTenant,
   ToastMessage,
@@ -163,6 +164,7 @@ interface SimulatorContextType {
     initialIsAuto?: boolean,
     customTokenUid?: string | null,
     customEmspId?: string | null,
+    customCdrToken?: OcpiCdrToken | null,
   ) => Promise<void>;
   stopSimulatedCharging: (evseUid: string) => Promise<void>;
   updateSessionTelemetryAndSend: (
@@ -231,6 +233,10 @@ const INITIAL_AUTOCHARGE_MAPPINGS: AutoChargeMapping[] = [
 const SimulatorContext = createContext<SimulatorContextType | undefined>(
   undefined,
 );
+
+function generateRandomSessionId() {
+  return `SES-${Math.floor(100000 + Math.random() * 900000)}`;
+}
 
 function generateRandomCdrId() {
   return `CDR-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1121,6 +1127,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     initialIsAuto = true,
     customTokenUid: string | null = null,
     customEmspId: string | null = null,
+    customCdrToken: OcpiCdrToken | null = null,
   ) => {
     // Check if EVSE is already charging
     const activeUids = Object.keys(activeSessionsRef.current);
@@ -1201,15 +1208,36 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     const generatedSessId =
       customSessId ||
       newSessionIdRef.current.trim() ||
-      `SES-${Math.floor(100000 + Math.random() * 900000)}`;
+      generateRandomSessionId();
 
     const startTimeStr = new Date().toISOString();
 
     // 1. PATCH EVSE status to CHARGING
     await handlePatchStatus(locationId, evseUid, "CHARGING");
 
+    const { countryCode, partyId } = getLocCpoInfo(locationId);
+    const sctSession: ActiveSessionState | null = isSctParty(partyId)
+      ? {
+          sessionId: generatedSessId,
+          evseUid,
+          locationId,
+          kwh: 0.0,
+          soc: 15.0,
+          cost: 0.0,
+          startTime: startTimeStr,
+          status: "ACTIVE",
+          emspId,
+          authorizationReference: customSessId,
+          tokenUid,
+          ...(customCdrToken ? { cdrToken: customCdrToken } : {}),
+          billingProfile: "SCT",
+          phase: "CHARGING",
+          tariffSnapshot: buildSctTariff(new Date(startTimeStr)),
+        }
+      : null;
+
     // 2. Put Session to CPO receiver (State: ACTIVE)
-    const initialSessionPayload = {
+    const initialSessionPayload = sctSession ? buildSctSessionPayload(sctSession, [], startTimeStr) : {
       id: generatedSessId,
       start_date_time: startTimeStr,
       kwh: 0.0,
@@ -1226,7 +1254,6 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       ...sessionTemplateRef.current, // Merge template variables
     };
 
-    const { countryCode, partyId } = getLocCpoInfo(locationId);
     const res = await sendRequest(
       `Start Session [${generatedSessId}]`,
       `/simulator/simulate/sessions/${countryCode}/${partyId}/${generatedSessId}`,
@@ -1248,31 +1275,32 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       const initialVoltage = 400.0;
       const initialCurrent = Math.round(((initialKw * 1000) / initialVoltage) * 10) / 10;
 
-      const activeObj: ActiveSessionState = {
-        sessionId: generatedSessId,
-        evseUid,
-        locationId,
-        kwh: 0.0,
-        soc: 15.0,
-        cost: 0.0,
-        startTime: startTimeStr,
-        kw: initialKw,
-        voltage: initialVoltage,
-        current: initialCurrent,
-        status: "ACTIVE",
-        // SCT sessions are driven from the 星舟 page, which has no manual telemetry: always simulate charging
-        isAuto: isSctParty(partyId) ? true : initialIsAuto,
-        emspId,
-        authorizationReference: customSessId,
-        tokenUid,
-        ...(isSctParty(partyId)
-          ? {
-              billingProfile: "SCT" as const,
-              phase: "CHARGING" as const,
-              tariffSnapshot: buildSctTariff(new Date(startTimeStr)),
-            }
-          : {}),
-      };
+      const activeObj: ActiveSessionState = sctSession
+        ? {
+            ...sctSession,
+            kw: initialKw,
+            voltage: initialVoltage,
+            current: initialCurrent,
+            // SCT sessions are driven from the 星舟 page, which has no manual telemetry: always simulate charging
+            isAuto: true,
+          }
+        : {
+            sessionId: generatedSessId,
+            evseUid,
+            locationId,
+            kwh: 0.0,
+            soc: 15.0,
+            cost: 0.0,
+            startTime: startTimeStr,
+            kw: initialKw,
+            voltage: initialVoltage,
+            current: initialCurrent,
+            status: "ACTIVE",
+            isAuto: initialIsAuto,
+            emspId,
+            authorizationReference: customSessId,
+            tokenUid,
+          };
 
       setActiveChargingSessions((prev) => ({
         ...prev,
@@ -1350,7 +1378,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       };
     });
 
-    const sessionPayload = {
+    const sessionPayload = mergedSession.billingProfile === "SCT"
+      ? buildSctSessionPayload(mergedSession, [sctChargingPeriod(mergedSession)], new Date().toISOString())
+      : {
       id: mergedSession.sessionId,
       start_date_time: mergedSession.startTime,
       kwh: mergedSession.kwh,
@@ -1572,7 +1602,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       id: session.sessionId,
       start_date_time: session.startTime,
       kwh: session.kwh,
-      cdr_token: {
+      cdr_token: session.cdrToken || {
         country_code: emsp?.countryCode || "TW",
         party_id: emsp?.partyId || "EMS",
         uid: session.tokenUid || template.cdr_token?.uid || "MANUAL-TOKEN-CPO",
@@ -1590,6 +1620,37 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     };
   };
 
+  // One OCPI 2.2.1 Session shape for every SCT update: start, charging telemetry and billing start
+  const buildSctSessionPayload = (
+    session: ActiveSessionState,
+    chargingPeriods: unknown[],
+    lastUpdated: string,
+  ) => {
+    const { countryCode, partyId } = getLocCpoInfo(session.locationId);
+    return {
+      ...buildSctSessionBase(session, countryCode, partyId),
+      charging_periods: chargingPeriods,
+      total_cost: toOcpiPrice(session, session.cost),
+      status: session.status || "ACTIVE",
+      last_updated: lastUpdated,
+      // Addresses the request to the owning eMSP; the HUB strips it before forwarding
+      emsp_id: session.emspId,
+    };
+  };
+
+  // Charging telemetry period, same dimensions as the other CPOs' sessions
+  const sctChargingPeriod = (session: ActiveSessionState) => ({
+    start_date_time: session.startTime,
+    dimensions: [
+      { type: "STATE_OF_CHARGE", volume: session.soc },
+      { type: "POWER", volume: session.kw },
+      { type: "ENERGY", volume: session.kwh },
+      { type: "CURRENT", volume: session.current },
+      { type: "VOLTAGE", volume: session.voltage },
+    ],
+    tariff_id: session.tariffSnapshot?.id,
+  });
+
   // SCT spec 2.5.1: when the buffer expires, PUT the same session once, still ACTIVE, with the
   // free buffer periods and a zero-volume billing period appended; total_cost stays the energy cost
   const pushSctIdleBillingStart = async (evseUid: string) => {
@@ -1606,9 +1667,10 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     const { countryCode, partyId } = getLocCpoInfo(session.locationId);
     const { periods } = buildSctChargingPeriods(session, bufferEnd);
     const lastUpdated = bufferEnd.toISOString().replace(/\.\d{3}Z$/, "Z");
-    const payload = {
-      ...buildSctSessionBase(session, countryCode, partyId),
-      charging_periods: [
+    // last_updated is fixed to the billing start so a resend carries identical content
+    const payload = buildSctSessionPayload(
+      session,
+      [
         ...periods,
         {
           start_date_time: bufferEnd.toISOString(),
@@ -1616,12 +1678,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
           tariff_id: "",
         },
       ],
-      total_cost: toOcpiPrice(session, session.cost),
-      status: "ACTIVE",
-      // Fixed to the billing start so a resend carries identical content
-      last_updated: lastUpdated,
-      emsp_id: session.emspId,
-    };
+      lastUpdated,
+    );
 
     addLog(
       "CPO_SIM",
@@ -1969,7 +2027,20 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         });
 
         // Send telemetry Session PUT update to CPO receiver
-        const sessionPayload = {
+        const sessionPayload = session.billingProfile === "SCT"
+          ? (() => {
+              const tick = {
+                ...session,
+                soc: Math.round(nextSoc * 10) / 10,
+                kwh: nextKwh,
+                cost: nextCost,
+                kw: powerVar,
+                current: currentAmp,
+                voltage: currentVoltage,
+              };
+              return buildSctSessionPayload(tick, [sctChargingPeriod(tick)], new Date().toISOString());
+            })()
+          : {
           id: session.sessionId,
           start_date_time: session.startTime,
           kwh: nextKwh,
@@ -2083,6 +2154,15 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
               false,
               token?.uid || "MANUAL-TOKEN-CPO",
               emsp_id || null,
+              token?.uid
+                ? {
+                    country_code: token.country_code,
+                    party_id: token.party_id,
+                    uid: token.uid,
+                    type: token.type,
+                    contract_id: token.contract_id,
+                  }
+                : null,
             );
           }
         } else if (parsed.type === "SESSION_STOPPED") {

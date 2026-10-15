@@ -124,12 +124,22 @@ export interface ActiveSessionState {
   emspId?: string;
   authorizationReference?: string;
   tokenUid?: string;
+  // The token the eMSP sent with START_SESSION, echoed back as the session/CDR cdr_token
+  cdrToken?: OcpiCdrToken;
   // Idle-fee (星舟 SCT) sessions stay ACTIVE after charging until the vehicle is unplugged
   billingProfile?: "SCT";
   phase?: "CHARGING" | "IDLE";
   chargingEndTime?: string;
   idleBillingPushed?: boolean;
   tariffSnapshot?: OcpiTariff;
+}
+
+export interface OcpiCdrToken {
+  country_code: string;
+  party_id: string;
+  uid: string;
+  type: string;
+  contract_id: string;
 }
 
 export interface SessionTemplate {

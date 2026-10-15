@@ -6,6 +6,13 @@ import { RoutingCacheService } from "./routing-cache.service";
 import { RoutingFilterEngine } from "./filtering/filter.strategy";
 import { encrypt } from "../../common/utils/crypto";
 
+// emsp_id is the HUB's internal owner reference (kept in the DB); it is not an OCPI field
+function toOcpiPayload(payload: any) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const { emsp_id: _emspId, ...ocpiPayload } = payload;
+  return ocpiPayload;
+}
+
 @Injectable()
 export class RoutingProducerService {
   private readonly logger = new Logger(RoutingProducerService.name);
@@ -113,7 +120,7 @@ export class RoutingProducerService {
         targetUrl,
         token: encryptedToken,
         emspKey,
-        payload,
+        payload: toOcpiPayload(payload),
         headers,
         cpoCountryCode,
         cpoPartyId,
