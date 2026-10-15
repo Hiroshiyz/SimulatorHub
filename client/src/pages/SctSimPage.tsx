@@ -102,6 +102,7 @@ export default function SctSimPage() {
     startSimulatedCharging,
     stopSimulatedCharging,
     unplugVehicle,
+    updateSessionTelemetryOnly,
     handleAddCpo,
     handleAddRoutingRule,
     handleSyncCustomLocation,
@@ -286,6 +287,10 @@ export default function SctSimPage() {
                     <span style={{ fontSize: "12.5px", fontWeight: 700 }}>{evse.evse_id || evse.uid}</span>
                     <span className={`evse-badge ${session ? "charging" : evse.status.toLowerCase()}`}>{badge}</span>
                   </div>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                    physical_reference: <strong style={{ color: "white" }}>{evse.rawJson?.physical_reference || "—"}</strong>
+                    {" · "}uid: {evse.uid}
+                  </div>
 
                   {!session && (
                     <button
@@ -310,6 +315,14 @@ export default function SctSimPage() {
                         <div className="charging-bar-fill" style={{ width: `${session.soc}%` }}></div>
                       </div>
                       <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Session {session.sessionId}</div>
+                      <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px" }}>
+                        <input
+                          type="checkbox"
+                          checked={session.isAuto !== false}
+                          onChange={(e) => updateSessionTelemetryOnly(evse.uid, { isAuto: e.target.checked })}
+                        />
+                        自動模擬充電並 PUT Session (每 1.5 秒 = 1 分鐘)
+                      </label>
                       <button
                         className="button button-secondary"
                         style={{ color: "var(--accent-red)", borderColor: "rgba(239, 68, 68, 0.2)" }}

@@ -1260,7 +1260,8 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         voltage: initialVoltage,
         current: initialCurrent,
         status: "ACTIVE",
-        isAuto: initialIsAuto,
+        // SCT sessions are driven from the 星舟 page, which has no manual telemetry: always simulate charging
+        isAuto: isSctParty(partyId) ? true : initialIsAuto,
         emspId,
         authorizationReference: customSessId,
         tokenUid,

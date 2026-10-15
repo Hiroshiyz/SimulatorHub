@@ -16,6 +16,7 @@ export interface Evse {
   evse_id: string | null;
   status: string;
   rawJson?: {
+    physical_reference?: string;
     connectors?: {
       power_type?: string;
       max_electric_power?: number;
