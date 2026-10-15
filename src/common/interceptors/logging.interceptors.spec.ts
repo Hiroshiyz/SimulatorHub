@@ -51,7 +51,10 @@ describe("LoggingInterceptor", () => {
         expect(loggerLogSpy).toHaveBeenCalled();
         const logMsg = loggerLogSpy.mock.calls[0][0];
         expect(logMsg).toContain("[HTTP SUCCESS] GET /ocpi/versions");
-        expect(logMsg).toContain("Response Body: {\"data\":\"successResponse\"}");
+        expect(logMsg).toContain("Request Body: {\"test\":\"data\"}");
+        // Response bodies are deliberately not logged
+        expect(logMsg).not.toContain("Response Body");
+        expect(logMsg).not.toContain("successResponse");
         expect(logMsg).toContain("Request Headers: {\"authorization\":\"******************\"}");
         done();
       },

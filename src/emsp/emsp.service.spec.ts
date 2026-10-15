@@ -125,7 +125,7 @@ describe("EmspService", () => {
         payload,
         expect.objectContaining({
           headers: expect.objectContaining({
-            "Authorization": "bearer mock_token_b",
+            "Authorization": "Bearer mock_token_b",
             "OCPI-from-party-id": "CPO",
             "OCPI-from-country-code": "TW",
           }),
