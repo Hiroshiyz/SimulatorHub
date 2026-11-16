@@ -40,12 +40,15 @@ services:
       - HUB_BASE_URL=${HUB_BASE_URL}
     ports:
       - "${APP_PORT:-3030}:3030"
+    extra_hosts:
+    - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
     restart: unless-stopped
+    
 
 volumes:
   pgdata:

@@ -2,8 +2,6 @@ import { Processor, WorkerHost, OnWorkerEvent } from "@nestjs/bullmq";
 import { Job } from "bullmq";
 import { HttpService } from "@nestjs/axios";
 import { Injectable, Logger } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
-import { RoutingCacheService } from "./routing-cache.service";
 import { ConfigService } from "@nestjs/config";
 import { decrypt } from "../../common/utils/crypto";
 import { firstValueFrom } from "rxjs";
@@ -16,8 +14,6 @@ export class OcpiRoutingWorker extends WorkerHost {
 
   constructor(
     private readonly httpService: HttpService,
-    private readonly prisma: PrismaService,
-    private readonly cacheService: RoutingCacheService,
     private readonly configService: ConfigService,
   ) {
     super();
@@ -74,65 +70,15 @@ export class OcpiRoutingWorker extends WorkerHost {
 
     this.logger.error(`Job ${job.id} failed: ${errorMsg}`, error?.stack);
 
-    // If job has failed after all 3 retries
+    // Exhausted jobs remain failed; new jobs can still use the channel.
     const maxAttempts = job.opts.attempts || 3;
     if (job.attemptsMade >= maxAttempts) {
       this.logger.warn(
-        `Job ${job.id} has failed after all ${maxAttempts} attempts. Triggering Circuit Breaker.`,
+        `Job ${job.id} has failed after all ${maxAttempts} attempts. Channel status unchanged.`,
       );
 
-      const { emspKey, targetUrl, cpoCountryCode, cpoPartyId } = job.data;
-      const [emspCountryCode, emspPartyId] = emspKey.split(":");
-
-      try {
-        // 1. Trigger Circuit Breaker: Update DB table status to ERROR_DISABLED inside transaction
-        await this.prisma.$transaction(async (tx) => {
-          await tx.hubRoutingRule.update({
-            where: {
-              cpoCountryCode_cpoPartyId_emspCountryCode_emspPartyId: {
-                cpoCountryCode: cpoCountryCode.toUpperCase(),
-                cpoPartyId: cpoPartyId.toUpperCase(),
-                emspCountryCode: emspCountryCode.toUpperCase(),
-                emspPartyId: emspPartyId.toUpperCase(),
-              },
-            },
-            data: {
-              channelStatus: "ERROR_DISABLED",
-            },
-          });
-        });
-
-        this.logger.log(`Circuit Breaker: Updated database rule for ${emspKey} to ERROR_DISABLED`);
-
-        // 2. Evict/Refresh Redis Cache for this rule
-        const updatedRule = await this.prisma.hubRoutingRule.findUnique({
-          where: {
-            cpoCountryCode_cpoPartyId_emspCountryCode_emspPartyId: {
-              cpoCountryCode: cpoCountryCode.toUpperCase(),
-              cpoPartyId: cpoPartyId.toUpperCase(),
-              emspCountryCode: emspCountryCode.toUpperCase(),
-              emspPartyId: emspPartyId.toUpperCase(),
-            },
-          },
-        });
-
-        if (updatedRule) {
-          await this.cacheService.syncRuleToRedis(updatedRule);
-        } else {
-          await this.cacheService.deleteRuleFromRedis(
-            cpoCountryCode,
-            cpoPartyId,
-            emspCountryCode,
-            emspPartyId,
-          );
-        }
-        this.logger.log(`Circuit Breaker: Synchronized cache for ${emspKey}`);
-
-        // 3. Notion Alert
-        await this.createNotionIncident(job.id || `JOB-${Date.now()}`, emspKey, targetUrl, errorMsg);
-      } catch (err: any) {
-        this.logger.error(`Error executing circuit breaker logic: ${err.message}`, err.stack);
-      }
+      const { emspKey, targetUrl } = job.data;
+      await this.createNotionIncident(job.id || `JOB-${Date.now()}`, emspKey, targetUrl, errorMsg);
     }
   }
 

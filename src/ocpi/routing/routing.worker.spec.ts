@@ -97,7 +97,7 @@ describe("OcpiRoutingWorker", () => {
     );
   });
 
-  it("should trigger Circuit Breaker, update DB, sync cache and send Notion alert on final failure", async () => {
+  it("should preserve channel status and send an alert on final failure", async () => {
     const job: any = {
       id: "job-failed",
       attemptsMade: 3,
@@ -115,24 +115,10 @@ describe("OcpiRoutingWorker", () => {
 
     await worker.onFailed(job, error);
 
-    // Verify DB update transaction
-    expect(prismaService.$transaction).toHaveBeenCalled();
-    expect(prismaService.hubRoutingRule.update).toHaveBeenCalledWith({
-      where: {
-        cpoCountryCode_cpoPartyId_emspCountryCode_emspPartyId: {
-          cpoCountryCode: "TW",
-          cpoPartyId: "CPO",
-          emspCountryCode: "TW",
-          emspPartyId: "EMP",
-        },
-      },
-      data: {
-        channelStatus: "ERROR_DISABLED",
-      },
-    });
-
-    // Verify Cache Sync
-    expect(cacheService.syncRuleToRedis).toHaveBeenCalled();
+    expect(prismaService.$transaction).not.toHaveBeenCalled();
+    expect(prismaService.hubRoutingRule.update).not.toHaveBeenCalled();
+    expect(cacheService.syncRuleToRedis).not.toHaveBeenCalled();
+    expect(cacheService.deleteRuleFromRedis).not.toHaveBeenCalled();
 
     // Verify Notion API Post
     expect(axios.post).toHaveBeenCalledWith(
@@ -145,4 +131,18 @@ describe("OcpiRoutingWorker", () => {
       }),
     );
   });
+  it("should leave the channel unchanged and wait for retries before alerting", async () => {
+    await worker.onFailed({
+      id: "job-retrying",
+      attemptsMade: 1,
+      opts: { attempts: 3 },
+      data: { emspKey: "TW:EMP", targetUrl: "http://emsp.com" },
+    } as any, new Error("Connection refused"));
+
+    expect(prismaService.$transaction).not.toHaveBeenCalled();
+    expect(prismaService.hubRoutingRule.update).not.toHaveBeenCalled();
+    expect(cacheService.syncRuleToRedis).not.toHaveBeenCalled();
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
 });

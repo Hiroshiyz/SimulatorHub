@@ -22,10 +22,10 @@
 #### 2. `routing.worker.ts` (路由轉發消費者/執行者)
 **職責：從佇列中取出任務，實際執行 HTTP 請求，並處理失敗與重試邏輯。**
 * **非同步發送**：接收到 Job 後，使用 `@nestjs/axios` 實際發送 HTTP 請求 (PUT/PATCH/POST) 至目標 eMSP 的伺服器。
-* **自動重試與熔斷**：
-  * 若請求失敗 (如 `ECONNREFUSED` 或 `Timeout`)，BullMQ 會自動重試預設 3 次。
-  * **熔斷機制**：若 3 次皆失敗，觸發 `@OnWorkerEvent("failed")` 監聽器。系統會自動將資料庫中的該條規則 `channelStatus` 更新為 **`ERROR_DISABLED`**，並同步更新 Redis 剔除該規則。
-  * **Notion 警報系統**：熔斷觸發的同時，會組裝錯誤資訊，透過 Notion API 自動建立一筆「HUB 錯誤回報」的 Incident 工單。
+* **自動重試與失敗處理**：
+  * 若請求失敗 (如 `ECONNREFUSED` 或 `Timeout`)，BullMQ 預設最多嘗試 3 次（含首次）。
+  * **維持通道狀態**：每筆任務最多嘗試 3 次；全部失敗後保留失敗任務，不修改 DB 或 Redis 的通道狀態，後續新資料仍可繼續轉發。手動停用的通道仍維持停用。
+  * **Notion 警報系統**：任務嘗試全部失敗時，會組裝錯誤資訊，透過 Notion API 自動建立一筆「HUB 錯誤回報」的 Incident 工單。
 
 #### 3. `routing-cache.service.ts` (路由快取服務)
 **職責：確保高頻率的路由讀取都在記憶體 (Redis) 進行，避免拖垮 PostgreSQL。**
@@ -43,12 +43,12 @@
 2. **[轉交 HUB]** `SimulatorService` 將請求打到 HUB 本身的路由接收端點。
 3. **[Producer 處理]** HUB 收到後，交由 `RoutingProducerService` 讀取 Redis 並過濾條件，最後將任務 `job` 放進 BullMQ `ocpi-routing-queue`。
 4. **[Worker 執行 (成功)]** `OcpiRoutingWorker` 接手，將請求打給真正的目標 eMSP (`http://localhost:5053`)，回傳 HTTP 200 成功。
-5. **[Worker 執行 (失敗)]** 如果對方伺服器掛了，Worker 自動重試 3 次。
-6. **[熔斷與警報]** 3 次皆敗後，Worker 將 DB 與 Redis 標記為 `ERROR_DISABLED`，並發送 Notion 錯誤工單。未來再有資料進來，Producer 第一關就會直接擋掉 (Skip)。
+5. **[Worker 執行 (失敗)]** 如果對方伺服器掛了，Worker 最多嘗試 3 次（含首次）。
+6. **[失敗警報]** 3 次皆敗後，Worker 保留失敗任務並發送 Notion 錯誤工單，通道狀態不變，後續新資料繼續轉發。
 
 ### 開發與除錯技巧
 * **快取不同步**：如果發現行為跟資料庫狀態不一致，通常是因為底層直接改了 DB 而沒有更新 Redis。重啟伺服器 (`npm run start:dev`) 即可觸發自動同步。
-* **測試熔斷**：故意在畫面上將規則的目標網址改為一個打不通的 Port (如 `5053`)，即可觀賞自動重試與發送 Notion 的完整流程。
+* **測試失敗處理**：故意在畫面上將規則的目標網址改為一個打不通的 Port (如 `5053`)，即可觀賞自動重試與發送 Notion 的完整流程。
 * **MOCK_TESTING**：將通道切換為 `MOCK_TESTING` 時，系統會無視填寫的目標網址，強制導向內部沙盒，適合用來驗證資料格式，不會產生錯誤警報。
 
 ---
@@ -71,10 +71,10 @@ The entire OCPI routing engine consists of the following core components, adopti
 #### 2. `routing.worker.ts` (Routing Worker)
 **Responsibility: Pops tasks from the queue, executes actual HTTP requests, and handles failure/retry logic.**
 * **Asynchronous Request**: After receiving a Job, uses `@nestjs/axios` to send the actual HTTP request (PUT/PATCH/POST) to the target eMSP server.
-* **Auto-Retry and Circuit Breaker**:
-  * If the request fails (e.g., `ECONNREFUSED` or `Timeout`), BullMQ will automatically retry up to 3 times by default.
-  * **Circuit Breaker Mechanism**: If all 3 retries fail, the `@OnWorkerEvent("failed")` listener is triggered. The system will automatically update the rule's `channelStatus` in the database to **`ERROR_DISABLED`**, and sync this to Redis to disable the channel.
-  * **Notion Alert System**: When the circuit breaker trips, it assembles error information and automatically creates a "HUB Incident Report" ticket via the Notion API.
+* **Auto-Retry and Failure Handling**:
+  * If the request fails (e.g., `ECONNREFUSED` or `Timeout`), BullMQ allows up to 3 attempts by default (including the first request).
+  * **Preserve Channel Status**: Each job gets up to 3 attempts. Exhausted jobs remain failed without changing channel status in DB or Redis. New data continues forwarding; manually disabled channels stay disabled.
+  * **Notion Alert System**: When a job exhausts its attempts, it assembles error information and automatically creates a "HUB Incident Report" ticket via the Notion API.
 
 #### 3. `routing-cache.service.ts` (Routing Cache Service)
 **Responsibility: Ensures high-frequency routing reads are performed in memory (Redis) to prevent overloading PostgreSQL.**
@@ -92,10 +92,10 @@ The entire OCPI routing engine consists of the following core components, adopti
 2. **[Pass to HUB]** `SimulatorService` sends the request to the HUB's own routing receiver endpoint.
 3. **[Producer Processing]** Upon receipt, HUB delegates to `RoutingProducerService` to read Redis, evaluate filters, and push the `job` to the BullMQ `ocpi-routing-queue`.
 4. **[Worker Execution (Success)]** `OcpiRoutingWorker` picks it up, sends the request to the real target eMSP, returning an HTTP 200 success.
-5. **[Worker Execution (Failure)]** If the target server is down, the Worker auto-retries 3 times.
-6. **[Circuit Breaker & Alert]** After 3 consecutive failures, the Worker marks DB/Redis as `ERROR_DISABLED` and fires a Notion error ticket. Future incoming data will be immediately blocked (Skipped) by the Producer.
+5. **[Worker Execution (Failure)]** If the target server is down, the Worker allows up to 3 attempts (including the first request).
+6. **[Failure Alert]** After all 3 attempts fail, the Worker retains the failed job and sends a Notion alert. Channel status stays unchanged and new data continues forwarding.
 
 ### Development and Debugging Tips
 * **Cache Out-Of-Sync**: If behavior mismatches DB status, it is usually because DB was modified directly without updating Redis. Restarting the server (`npm run start:dev`) triggers an auto-sync.
-* **Testing Circuit Breaker**: Purposely change a rule's target URL to an unreachable Port (e.g., `5053`) on the UI to observe the complete auto-retry and Notion alert flow.
+* **Testing Failure Handling**: Purposely change a rule's target URL to an unreachable Port (e.g., `5053`) on the UI to observe the complete auto-retry and Notion alert flow.
 * **Mock Testing Mode**: When the channel is switched to `MOCK_TESTING`, the system ignores the specified target URL and forces forwarding to the internal sandbox. Ideal for validating data formats without generating error alerts.

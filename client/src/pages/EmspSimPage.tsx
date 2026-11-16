@@ -327,7 +327,7 @@ export default function EmspSimPage({ mode = "real", embedded = false, locationF
     const batteryCapacityKwh = 80;
     const timer = window.setInterval(() => {
       for (const session of activeSessionsRef.current) {
-        if (!autoTelemetrySessions[session.id]) continue;
+        if (autoTelemetrySessions[session.id] === false) continue;
         if (autoTelemetryInFlightRef.current.has(session.id)) continue;
 
         const location = locationsRef.current.find((item) => item.id === session.locationId);
@@ -546,7 +546,7 @@ export default function EmspSimPage({ mode = "real", embedded = false, locationF
                       <label className="real-telemetry-auto-toggle">
                         <input
                           type="checkbox"
-                          checked={autoTelemetrySessions[session.id] === true}
+                          checked={autoTelemetrySessions[session.id] !== false}
                           onChange={(event) => setAutoTelemetrySessions((current) => ({
                             ...current,
                             [session.id]: event.target.checked,
