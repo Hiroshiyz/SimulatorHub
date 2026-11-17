@@ -605,7 +605,7 @@ export class OcpiService {
   }
 
   // Async CommandResult (OCPI 2.2.1 commands module) posted to the eMSP's response_url
-  private async sendCommandResult(emsp: PartyContext, responseUrl: string | undefined, result: string) {
+  async sendCommandResult(emsp: PartyContext, responseUrl: string | undefined, result: string) {
     if (!responseUrl) return;
 
     try {

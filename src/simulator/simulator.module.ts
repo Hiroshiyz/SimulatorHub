@@ -1,3 +1,4 @@
+import { ChargingRuntimeService } from "./charging-runtime.service";
 import { Module } from "@nestjs/common";
 import { SimulatorController } from "./simulator.controller";
 import { SimulatorService } from "./simulator.service";
@@ -8,7 +9,7 @@ import { RoutingModule } from "../ocpi/routing/routing.module";
 @Module({
   imports: [OcpiModule, EmspModule, RoutingModule],
   controllers: [SimulatorController],
-  providers: [SimulatorService],
+  providers: [SimulatorService, ChargingRuntimeService],
 })
 export class SimulatorModule {}
 

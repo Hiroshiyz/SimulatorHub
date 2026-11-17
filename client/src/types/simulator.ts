@@ -121,6 +121,7 @@ export interface ActiveSessionState {
   voltage?: number;
   status?: "ACTIVE" | "COMPLETED" | "INVALID";
   isAuto?: boolean;
+  energyPrice?: number;
   emspId?: string;
   authorizationReference?: string;
   tokenUid?: string;

@@ -4,6 +4,7 @@ WORKDIR /app/client
 COPY client/package*.json ./
 RUN npm ci
 COPY client/ ./
+COPY src/common/sct-idle-fee.ts /app/src/common/sct-idle-fee.ts
 RUN npm run build
 
 # Stage 2: Build the NestJS application

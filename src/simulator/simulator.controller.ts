@@ -1,5 +1,6 @@
 import {
   Controller,
+  Optional,
   Post,
   Put,
   Patch,
@@ -10,12 +11,28 @@ import {
   Sse,
   MessageEvent,
 } from "@nestjs/common";
+import { ChargingRuntimeService } from "./charging-runtime.service";
 import { SimulatorService } from "./simulator.service";
 import { Observable } from "rxjs";
 
 @Controller("simulator")
 export class SimulatorController {
-  constructor(private readonly simulatorService: SimulatorService) {}
+  constructor(private readonly simulatorService: SimulatorService, @Optional() private readonly runtime?: ChargingRuntimeService) {}
+
+  @Get("charging-runtime")
+  getRuntime() { return this.runtime.snapshot(); }
+
+  @Post("charging-runtime")
+  registerRuntime(@Body() body: any) { return this.runtime.register(body); }
+
+  @Patch("charging-runtime/:evseUid")
+  updateRuntime(@Param("evseUid") uid: string, @Body() body: any) { return this.runtime.update(uid, body); }
+
+  @Post("charging-runtime/:evseUid/stop")
+  stopRuntime(@Param("evseUid") uid: string, @Body() body: any) { return this.runtime.stop(uid, false, body?.sessionId); }
+
+  @Post("charging-runtime/:evseUid/unplug")
+  unplugRuntime(@Param("evseUid") uid: string, @Body() body: any) { return this.runtime.stop(uid, true, body?.sessionId); }
 
   // --- Simulation Triggers (Call these endpoints to push data mock requests to your main server) ---
 

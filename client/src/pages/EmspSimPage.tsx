@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSimulator } from "../context/SimulatorContext";
 import type { Location } from "../types/simulator";
 import {
@@ -82,10 +82,11 @@ export default function EmspSimPage({ mode = "real", embedded = false, locationF
     sessions,
     cdrs,
     handleSendEmspCommand,
-    finalizeSessionWithCdr,
+    updateSessionTelemetryOnly,
+    updateSessionTelemetryAndSend,
     fetchDatabaseState,
-    tariffPrice,
     addLog,
+    tariffPrice,
     showToast,
   } = useSimulator();
 
@@ -96,12 +97,7 @@ export default function EmspSimPage({ mode = "real", embedded = false, locationF
     () => `AUTH-${Math.floor(100000 + Math.random() * 900000)}`,
   );
   const [telemetryDrafts, setTelemetryDrafts] = useState<Record<string, TelemetryDraft>>({});
-  const [autoTelemetrySessions, setAutoTelemetrySessions] = useState<Record<string, boolean>>({});
   const [historyStatusFilter, setHistoryStatusFilter] = useState("ALL");
-  const telemetryDraftsRef = useRef(telemetryDrafts);
-  const activeSessionsRef = useRef<ExtendedDbSession[]>([]);
-  const locationsRef = useRef(locations);
-  const autoTelemetryInFlightRef = useRef(new Set<string>());
 
   const isMockEmsp = (url?: string) => Boolean(url?.includes("/mock-emsp/"));
   const availableEmsps = emsps.filter((emsp) =>
@@ -142,18 +138,6 @@ export default function EmspSimPage({ mode = "real", embedded = false, locationF
       c.rawJson?.emsp_id === activeEmspId &&
       (!locationFilter || targetPartyIds.has(c.rawJson?.party_id?.toUpperCase())),
   );
-
-  useEffect(() => {
-    telemetryDraftsRef.current = telemetryDrafts;
-  }, [telemetryDrafts]);
-
-  useEffect(() => {
-    activeSessionsRef.current = activeFilteredSessions;
-  }, [activeFilteredSessions]);
-
-  useEffect(() => {
-    locationsRef.current = locations;
-  }, [locations]);
 
   const handleSendCommandClick = async (cmdType: "START_SESSION" | "STOP_SESSION") => {
     if (!activeCommandEmsp) {
@@ -220,20 +204,23 @@ export default function EmspSimPage({ mode = "real", embedded = false, locationF
     }
   };
 
-  // Same pricing as the CPO simulator: 20 TWD session fee + kWh × tariff, VAT included
   const estimateTotalCost = (kwh: number) => {
-    const price = Number.isFinite(tariffPrice) ? tariffPrice : 9.5;
-    const inclVat = Math.round(20.0 + (Number.isFinite(kwh) ? kwh : 0) * price);
-    return { excl_vat: Math.round(inclVat * 0.95), incl_vat: inclVat };
+    const inclVat = Math.round(20 + kwh * tariffPrice);
+    return { incl_vat: inclVat, excl_vat: Math.round(inclVat * 0.95) };
   };
 
   const getTelemetryDraft = (session: ExtendedDbSession): TelemetryDraft =>
-    telemetryDrafts[session.id] || {
+    telemetryDrafts[session.id] || (activeChargingSessions[session.evseUid] ? {
+      soc: activeChargingSessions[session.evseUid].soc,
+      kw: activeChargingSessions[session.evseUid].kw || 0,
+      kwh: activeChargingSessions[session.evseUid].kwh,
+      status: activeChargingSessions[session.evseUid].status || "ACTIVE",
+    } : {
       soc: telemetryValue(session, "STATE_OF_CHARGE", 0),
       kw: telemetryValue(session, "POWER", 0),
       kwh: session.kwh || telemetryValue(session, "ENERGY", 0),
       status: session.status || "ACTIVE",
-    };
+    });
 
   const updateTelemetryDraft = (session: ExtendedDbSession, fields: Partial<TelemetryDraft>) => {
     setTelemetryDrafts((current) => ({
@@ -248,135 +235,15 @@ export default function EmspSimPage({ mode = "real", embedded = false, locationF
     silent = false,
   ) => {
     const draft = telemetryOverride || getTelemetryDraft(session);
-    const location = locations.find((item) => item.id === session.locationId);
-    const countryCode = location?.party?.countryCode || "TW";
-    const partyId = location?.party?.partyId || "CPO";
-    const now = new Date().toISOString();
-    const startTime = session.rawJson?.start_date_time || session.updatedAt || now;
-    const voltage = telemetryValue(session, "VOLTAGE", 400);
-    const current = draft.kw > 0 && voltage > 0
-      ? Math.round(((draft.kw * 1000) / voltage) * 10) / 10
-      : 0;
-    const payload = {
-      ...session.rawJson,
-      id: session.id,
-      start_date_time: startTime,
-      kwh: draft.kwh,
-      location_id: session.locationId,
-      evse_uid: session.evseUid,
-      status: draft.status,
-      emsp_id: activeEmspId,
-      currency: session.rawJson?.currency || "TWD",
-      total_cost: estimateTotalCost(draft.kwh),
-      charging_periods: [{
-        start_date_time: startTime,
-        dimensions: [
-          { type: "STATE_OF_CHARGE", volume: draft.soc },
-          { type: "POWER", volume: draft.kw },
-          { type: "ENERGY", volume: draft.kwh },
-          { type: "CURRENT", volume: current },
-          { type: "VOLTAGE", volume: voltage },
-        ],
-      }],
-      last_updated: now,
-    };
-
     try {
-      const response = await fetch(
-        `/simulator/simulate/sessions/${countryCode}/${partyId}/${session.id}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        },
-      );
-      if (!response.ok) throw new Error(await response.text());
-      if (draft.status === "COMPLETED" || draft.status === "INVALID") {
-        // Frees the EVSE, posts the CDR through the HUB and releases the local tracker
-        await finalizeSessionWithCdr({
-          sessionId: session.id,
-          evseUid: session.evseUid,
-          locationId: session.locationId,
-          kwh: draft.kwh,
-          soc: draft.soc,
-          cost: 0,
-          startTime,
-          status: draft.status as "COMPLETED" | "INVALID",
-          emspId: activeEmspId,
-        });
-      }
-      addLog(
-        "CPO_SIM",
-        "REAL_EMSP_TELEMETRY",
-        `Session ${session.id} 已回傳至 ${activeCommandEmsp?.name || "實體 eMSP"}: ${draft.status}, SoC ${draft.soc}%, ${draft.kwh} kWh`,
-        "success",
-        payload,
-      );
+      await updateSessionTelemetryAndSend(session.evseUid, draft as Parameters<typeof updateSessionTelemetryAndSend>[1]);
+      setTelemetryDrafts((current) => { const next = { ...current }; delete next[session.id]; return next; });
       if (!silent) showToast(`Session ${session.id} 遙測已回傳`, "success");
-      await fetchDatabaseState();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      showToast(`Session 遙測回傳失敗：${message}`, "error");
+      console.error(error);
     }
   };
 
-  useEffect(() => {
-    if (mode !== "real") return;
-
-    const intervalSeconds = 15;
-    const batteryCapacityKwh = 80;
-    const timer = window.setInterval(() => {
-      for (const session of activeSessionsRef.current) {
-        if (autoTelemetrySessions[session.id] === false) continue;
-        if (autoTelemetryInFlightRef.current.has(session.id)) continue;
-
-        const location = locationsRef.current.find((item) => item.id === session.locationId);
-        const evse = location?.evses.find((item) => item.uid === session.evseUid);
-        const connector = evse?.connectors?.[0] || evse?.rawJson?.connectors?.[0];
-        const maxPowerKw = connector?.max_electric_power
-          ? connector.max_electric_power / 1000
-          : 120;
-        const currentDraft = telemetryDraftsRef.current[session.id] || {
-          soc: telemetryValue(session, "STATE_OF_CHARGE", 0),
-          kw: telemetryValue(session, "POWER", maxPowerKw),
-          kwh: session.kwh || telemetryValue(session, "ENERGY", 0),
-          status: session.status || "ACTIVE",
-        };
-        const powerKw = currentDraft.kw > 0 ? Math.min(currentDraft.kw, maxPowerKw) : maxPowerKw;
-        const addedKwh = powerKw * (intervalSeconds / 3600);
-        const nextKwh = Math.round((currentDraft.kwh + addedKwh) * 1000) / 1000;
-        const nextSoc = Math.min(
-          100,
-          Math.round((currentDraft.soc + (addedKwh / batteryCapacityKwh) * 100) * 10) / 10,
-        );
-        const completed = nextSoc >= 100;
-        const nextDraft: TelemetryDraft = {
-          ...currentDraft,
-          soc: nextSoc,
-          kw: completed ? 0 : powerKw,
-          kwh: nextKwh,
-          status: completed ? "COMPLETED" : "ACTIVE",
-        };
-
-        telemetryDraftsRef.current = {
-          ...telemetryDraftsRef.current,
-          [session.id]: nextDraft,
-        };
-        setTelemetryDrafts(telemetryDraftsRef.current);
-        autoTelemetryInFlightRef.current.add(session.id);
-        void pushRealSessionTelemetry(session, nextDraft, true).finally(() => {
-          autoTelemetryInFlightRef.current.delete(session.id);
-          if (completed) {
-            setAutoTelemetrySessions((current) => ({ ...current, [session.id]: false }));
-          }
-        });
-      }
-    }, intervalSeconds * 1000);
-
-    return () => window.clearInterval(timer);
-    // The latest sessions, locations and drafts are read from refs so field edits do not restart the timer.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, activeEmspId, autoTelemetrySessions]);
 
   const portalLabel = mode === "mock" ? "內建 Mock eMSP" : "實體 eMSP 串接";
   const portalDescription = mode === "mock"
@@ -415,7 +282,6 @@ export default function EmspSimPage({ mode = "real", embedded = false, locationF
           <select
             value={activeEmspId}
             onChange={(e) => {
-              setAutoTelemetrySessions({});
               setSelectedEmspIdForCmd(e.target.value);
             }}
           >
@@ -546,11 +412,11 @@ export default function EmspSimPage({ mode = "real", embedded = false, locationF
                       <label className="real-telemetry-auto-toggle">
                         <input
                           type="checkbox"
-                          checked={autoTelemetrySessions[session.id] !== false}
-                          onChange={(event) => setAutoTelemetrySessions((current) => ({
-                            ...current,
-                            [session.id]: event.target.checked,
-                          }))}
+                          checked={activeChargingSessions[session.evseUid]?.isAuto !== false}
+                          onChange={(event) => {
+                            updateSessionTelemetryOnly(session.evseUid, { isAuto: event.target.checked });
+                            setTelemetryDrafts((current) => { const next = { ...current }; delete next[session.id]; return next; });
+                          }}
                         />
                         <span>
                           <strong>自動傳送遙測</strong>

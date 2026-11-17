@@ -5,11 +5,13 @@ import {
   Logger,
   MessageEvent,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
+import { ChargingRuntimeService } from "./charging-runtime.service";
 import axios from "axios";
 import { PrismaService } from "../prisma/prisma.service";
 import { OcpiService } from "../ocpi/ocpi.service";
-import { Observable } from "rxjs";
+import { Observable, merge } from "rxjs";
 import { map } from "rxjs/operators";
 import { EmspService } from "../emsp/emsp.service";
 import { RoutingCacheService } from "../ocpi/routing/routing-cache.service";
@@ -23,6 +25,7 @@ export class SimulatorService implements OnModuleInit {
     private readonly ocpiService: OcpiService,
     private readonly emspService: EmspService,
     private readonly routingCacheService: RoutingCacheService,
+    @Optional() private readonly chargingRuntime?: ChargingRuntimeService,
   ) {}
 
   // Helper to dynamically get headers & base URL for a given CPO party
@@ -292,7 +295,7 @@ export class SimulatorService implements OnModuleInit {
   }
 
   getEventStream(): Observable<MessageEvent> {
-    return this.ocpiService.commands$.pipe(
+    return merge(this.ocpiService.commands$, ...(this.chargingRuntime ? [this.chargingRuntime.events$] : [])).pipe(
       map((event) => ({ data: event }) as MessageEvent),
     );
   }

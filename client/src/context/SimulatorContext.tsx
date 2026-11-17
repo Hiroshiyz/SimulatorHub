@@ -20,11 +20,7 @@ import type {
 } from "../types/simulator";
 import {
   buildSctTariff,
-  computeIdleFee,
   isSctParty,
-  sctBufferMinutes,
-  sctEnergyCost,
-  secondsToHours,
 } from "../billing/sctIdleFee";
 
 interface SimulatorContextType {
@@ -175,8 +171,6 @@ interface SimulatorContextType {
     evseUid: string,
     fields: Partial<ActiveSessionState>,
   ) => void;
-  releaseActiveChargingSession: (evseUid: string, sessionId?: string) => void;
-  finalizeSessionWithCdr: (session: ActiveSessionState) => Promise<void>;
   stopChargingForIdle: (evseUid: string, fields?: Partial<ActiveSessionState>) => void;
   unplugVehicle: (evseUid: string) => Promise<void>;
   tariffPrice: number;
@@ -236,10 +230,6 @@ const SimulatorContext = createContext<SimulatorContextType | undefined>(
 
 function generateRandomSessionId() {
   return `SES-${Math.floor(100000 + Math.random() * 900000)}`;
-}
-
-function generateRandomCdrId() {
-  return `CDR-${Math.floor(100000 + Math.random() * 900000)}`;
 }
 
 export function SimulatorProvider({ children }: { children: ReactNode }) {
@@ -379,7 +369,6 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
   const newSessionIdRef = useRef(newSessionId);
   const locationsRef = useRef(locations);
   const emspsRef = useRef(emsps);
-  const finalizingSessionsRef = useRef(new Set<string>());
 
   useEffect(() => {
     activeSessionsRef.current = activeChargingSessions;
@@ -439,15 +428,6 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       };
     }
     return { countryCode: "TW", partyId: "CPO" };
-  };
-
-  // SCT bills energy from the tariff snapshot accepted at start (no start fee); others use 20 + kWh × price
-  const computeSessionCost = (session: ActiveSessionState, kwh: number) => {
-    if (session.tariffSnapshot) {
-      return sctEnergyCost(session.tariffSnapshot, kwh, new Date(session.startTime));
-    }
-    const price = typeof tariffPrice === "number" && !isNaN(tariffPrice) ? tariffPrice : 9.5;
-    return Math.round(20.0 + kwh * price);
   };
 
   // SCT amounts are VAT-free, so excl_vat equals incl_vat (spec 2.4.1)
@@ -778,6 +758,9 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
   // Synchronize Tariff to HUB and EMSP
   const handleSyncTariff = async (energyPrice = 9.5) => {
     setTariffPrice(energyPrice);
+    await Promise.all(Object.values(activeSessionsRef.current)
+      .filter((session) => session.billingProfile !== "SCT")
+      .map((session) => runtimeRequest(session.evseUid, "", { energyPrice })));
     const tariffPayload = {
       id: "TAR-REGULAR",
       currency: "TWD",
@@ -1212,8 +1195,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
 
     const startTimeStr = new Date().toISOString();
 
-    // 1. PATCH EVSE status to CHARGING
-    await handlePatchStatus(locationId, evseUid, "CHARGING");
+    // The backend atomically owns the simulation and initializes the session/EVSE.
 
     const { countryCode, partyId } = getLocCpoInfo(locationId);
     const sctSession: ActiveSessionState | null = isSctParty(partyId)
@@ -1254,14 +1236,7 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
       ...sessionTemplateRef.current, // Merge template variables
     };
 
-    const res = await sendRequest(
-      `Start Session [${generatedSessId}]`,
-      `/simulator/simulate/sessions/${countryCode}/${partyId}/${generatedSessId}`,
-      "POST",
-      initialSessionPayload,
-    );
-
-    if (res.success) {
+    try {
       let initialKw = 120.0;
       const matchedEvse = locationsRef.current
         .flatMap((l) => l.evses)
@@ -1302,10 +1277,17 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
             tokenUid,
           };
 
-      setActiveChargingSessions((prev) => ({
-        ...prev,
-        [evseUid]: activeObj,
-      }));
+      const registered = await fetch("/simulator/charging-runtime", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: activeObj, payload: initialSessionPayload, countryCode, partyId, energyPrice: tariffPrice }),
+      });
+      if (!registered.ok) {
+        showToast(`後端模擬啟動失敗：${await registered.text()}`, "error");
+        return;
+      }
+      const snapshot = await registered.json();
+      activeSessionsRef.current = snapshot;
+      setActiveChargingSessions(snapshot);
       setSessionPayloadEdit(initialSessionPayload);
       setNewSessionId("");
       addLog(
@@ -1314,500 +1296,51 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         `啟動充電成功! Session ID: ${generatedSessId}，開始發送 telemetry`,
         "success",
       );
-    } else {
-      addLog(
-        "CPO_SIM",
-        "START_ERROR",
-        "無法寫入 Session 到 CPO 收取端",
-        "error",
-      );
+    } catch (error) {
+      showToast(`後端模擬啟動失敗：${error instanceof Error ? error.message : String(error)}`, "error");
     }
   };
 
-  // Update session telemetry only (local state update without sending)
-  const updateSessionTelemetryOnly = (
-    evseUid: string,
-    fields: Partial<ActiveSessionState>,
-  ) => {
-    setActiveChargingSessions((prev) => {
-      if (!prev[evseUid]) return prev;
-      return {
-        ...prev,
-        [evseUid]: {
-          ...prev[evseUid],
-          ...fields,
-        },
-      };
+  const runtimeRequest = async (evseUid: string, action: string, fields?: Partial<ActiveSessionState>, push = false) => {
+    const response = await fetch(`/simulator/charging-runtime/${encodeURIComponent(evseUid)}${action ? `/${action}` : ""}`, {
+      method: action ? "POST" : "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: activeSessionsRef.current[evseUid]?.sessionId, fields, push }),
     });
-  };
-
-  const releaseActiveChargingSession = (evseUid: string, sessionId?: string) => {
-    const currentSession = activeSessionsRef.current[evseUid];
-    if (!currentSession || (sessionId && currentSession.sessionId !== sessionId)) return;
-
-    const nextSessions = { ...activeSessionsRef.current };
-    delete nextSessions[evseUid];
-    // Update the ref immediately so a second remote START cannot be rejected
-    // while React is still waiting to commit the state update.
-    activeSessionsRef.current = nextSessions;
-    setActiveChargingSessions(nextSessions);
-  };
-
-  // Update session telemetry and send PUT request to HUB
-  const updateSessionTelemetryAndSend = async (
-    evseUid: string,
-    fields: Partial<ActiveSessionState>,
-  ) => {
-    const session = activeSessionsRef.current[evseUid];
-    if (!session) return;
-
-    const mergedSession = {
-      ...session,
-      ...fields,
-    };
-
-    const kwhValue = typeof mergedSession.kwh === "number" && !isNaN(mergedSession.kwh) ? mergedSession.kwh : 0.0;
-    const computedCost = computeSessionCost(mergedSession, kwhValue);
-    mergedSession.cost = computedCost;
-
-    setActiveChargingSessions((prev) => {
-      if (!prev[evseUid]) return prev;
-      return {
-        ...prev,
-        [evseUid]: mergedSession,
-      };
-    });
-
-    const sessionPayload = mergedSession.billingProfile === "SCT"
-      ? buildSctSessionPayload(mergedSession, [sctChargingPeriod(mergedSession)], new Date().toISOString())
-      : {
-      id: mergedSession.sessionId,
-      start_date_time: mergedSession.startTime,
-      kwh: mergedSession.kwh,
-      location_id: mergedSession.locationId,
-      evse_uid: mergedSession.evseUid,
-      status: mergedSession.status || "ACTIVE",
-      total_cost: toOcpiPrice(mergedSession, computedCost),
-      charging_periods: [
-        {
-          start_date_time: mergedSession.startTime,
-          dimensions: [
-            { type: "STATE_OF_CHARGE", volume: mergedSession.soc },
-            { type: "POWER", volume: mergedSession.kw },
-            { type: "ENERGY", volume: mergedSession.kwh },
-            { type: "CURRENT", volume: mergedSession.current },
-            { type: "VOLTAGE", volume: mergedSession.voltage }
-          ],
-          ...(mergedSession.tariffSnapshot ? { tariff_id: mergedSession.tariffSnapshot.id } : {}),
-        }
-      ],
-      last_updated: new Date().toISOString(),
-      emsp_id: mergedSession.emspId,
-      ...(mergedSession.authorizationReference
-        ? { authorization_reference: mergedSession.authorizationReference }
-        : {}),
-      ...sessionTemplateRef.current,
-    };
-
-    const { countryCode, partyId } = getLocCpoInfo(mergedSession.locationId);
-    
-    await sendRequest(
-      `Update Session [${mergedSession.sessionId}] (${mergedSession.status})`,
-      `/simulator/simulate/sessions/${countryCode}/${partyId}/${mergedSession.sessionId}`,
-      "POST",
-      sessionPayload,
-    );
-
-    if (mergedSession.status === "COMPLETED" || mergedSession.status === "INVALID") {
-      await finalizeSessionWithCdr(mergedSession);
+    if (!response.ok) {
+      const message = await response.text();
+      showToast(`遙測操作失敗：${message}`, "error");
+      throw new Error(message);
     }
+    const snapshot = await response.json();
+    activeSessionsRef.current = snapshot;
+    setActiveChargingSessions(snapshot);
+    if (push || action) await fetchDatabaseState();
   };
 
-  // Close out a finished session: free the EVSE, generate the CDR and post it through the HUB
-  const finalizeSessionWithCdr = async (session: ActiveSessionState) => {
-    // Guard against double settlement (e.g. auto-stop at 100% racing a remote STOP_SESSION)
-    if (finalizingSessionsRef.current.has(session.sessionId)) return;
-    finalizingSessionsRef.current.add(session.sessionId);
-
-    try {
-      const status = session.status || "COMPLETED";
-      await handlePatchStatus(session.locationId, session.evseUid, "AVAILABLE");
-
-      addLog(
-        "CPO_SIM",
-        "GENERATING_CDR",
-        `會話結束 (${status})，自動生成 CDR 結算單 (單號: ${session.sessionId})`,
-        "info",
-      );
-
-      const { countryCode, partyId } = getLocCpoInfo(session.locationId);
-      const kwhValue = typeof session.kwh === "number" && !isNaN(session.kwh) ? session.kwh : 0.0;
-      const computedCost = computeSessionCost(session, kwhValue);
-      const stopTimeStr = new Date().toISOString();
-      const newCdr = {
-        id: generateRandomCdrId(),
-        session_id: session.sessionId,
-        start_date_time: session.startTime,
-        end_date_time: stopTimeStr,
-        kwh: kwhValue,
-        authorization_reference: session.sessionId,
-        currency: "TWD",
-        total_cost: {
-          excl_vat: Math.round(computedCost * 0.95),
-          incl_vat: computedCost,
-        },
-        total_energy: kwhValue,
-        total_time: secondsToHours(
-          (new Date(stopTimeStr).getTime() -
-            new Date(session.startTime).getTime()) /
-            1000,
-        ),
-        last_updated: stopTimeStr,
-        settled: false,
-        transmission_status: "PENDING",
-        emsp_id: session.emspId,
-        ...cdrTemplateRef.current,
-        // The CDR must carry the CPO that owns the location; the template's defaults would
-        // otherwise make the HUB reject it as a cross-tenant write.
-        country_code: countryCode,
-        ctr_code: countryCode,
-        party_id: partyId,
-      };
-
-      setCdrPayloadEdit(newCdr);
-
-      const cdrRes = await sendRequest(
-        `Post CDR Receipt`,
-        "/simulator/simulate/cdrs",
-        "POST",
-        newCdr,
-      );
-
-      if (cdrRes.success) {
-        await transmitCdr(newCdr.id, newCdr);
-      }
-
-      releaseActiveChargingSession(session.evseUid, session.sessionId);
-
-      addLog(
-        "CPO_SIM",
-        "SESSION_STOPPED",
-        cdrRes.success
-          ? `充電會話 [${session.sessionId}] 結束！狀態: ${status}，已自動發送結算單。`
-          : `充電會話 [${session.sessionId}] 結束！狀態: ${status}，但 CDR 發送失敗，請至 Console 查看錯誤。`,
-        cdrRes.success ? "info" : "error",
-      );
-
-      await fetchDatabaseState();
-    } finally {
-      finalizingSessionsRef.current.delete(session.sessionId);
-    }
+  const updateSessionTelemetryOnly = (evseUid: string, fields: Partial<ActiveSessionState>) => {
+    // Persist edits without publishing MeterValues until the user presses send.
+    void runtimeRequest(evseUid, "", fields).catch(console.error);
   };
-
-  // The HUB settled a remote STOP_SESSION (session COMPLETED + CDR); drop the local tracker
-  const handleRemoteSessionStopped = async (data: {
-    session_id: string;
-    evse_uid?: string;
-    cdr_id?: string;
-    result?: string;
-  }) => {
-    const matchedUid = Object.keys(activeSessionsRef.current).find(
-      (uid) => activeSessionsRef.current[uid].sessionId === data.session_id,
-    );
-    if (matchedUid) {
-      releaseActiveChargingSession(matchedUid, data.session_id);
-    }
-
-    addLog(
-      "CPO_SIM",
-      "REMOTE_STOP",
-      data.result === "ACCEPTED"
-        ? `eMSP 遠端停止 Session ${data.session_id}，HUB 已結算並發送 CDR ${data.cdr_id}`
-        : `eMSP 遠端停止 Session ${data.session_id}，但 HUB 結算失敗 (${data.result})`,
-      data.result === "ACCEPTED" ? "info" : "error",
-      data,
-    );
-
-    await fetchDatabaseState();
+  const updateSessionTelemetryAndSend = async (evseUid: string, fields: Partial<ActiveSessionState>) => {
+    await runtimeRequest(evseUid, "", fields, true);
   };
-
-  // Stop charging & Generate CDR
-  const stopSimulatedCharging = async (evseUid: string) => {
-    if (activeSessionsRef.current[evseUid]?.billingProfile === "SCT") {
-      stopChargingForIdle(evseUid);
-      return;
-    }
-    await updateSessionTelemetryAndSend(evseUid, { status: "COMPLETED" });
-  };
-
-  // SCT: charging ended but the vehicle is still plugged in. The session stays ACTIVE and is not
-  // pushed during the free buffer (spec 2.1); the idle ticker pushes once when billing starts.
-  const stopChargingForIdle = (evseUid: string, fields: Partial<ActiveSessionState> = {}) => {
-    const session = activeSessionsRef.current[evseUid];
-    if (!session || session.billingProfile !== "SCT" || session.phase === "IDLE") return;
-
-    const idleSession: ActiveSessionState = {
-      ...session,
-      ...fields,
-      phase: "IDLE",
-      chargingEndTime: new Date().toISOString(),
-      kw: 0,
-      current: 0,
-    };
-    // Update the ref immediately so the telemetry loop and a remote STOP cannot race this
-    activeSessionsRef.current = { ...activeSessionsRef.current, [evseUid]: idleSession };
-    setActiveChargingSessions(activeSessionsRef.current);
-
-    addLog(
-      "CPO_SIM",
-      "SCT_CHARGING_ENDED",
-      `[星舟] Session ${session.sessionId} 充電結束，未拔槍 → 免費緩衝 ${sctBufferMinutes()} 分鐘後開始計收佔槍費`,
-      "info",
-    );
-  };
-
-  const buildSctChargingPeriods = (session: ActiveSessionState, until: Date) => {
-    const chargingEnd = new Date(session.chargingEndTime || until.toISOString());
-    const chargingSeconds = (chargingEnd.getTime() - new Date(session.startTime).getTime()) / 1000;
-    const idle = computeIdleFee(session.tariffSnapshot!, chargingEnd, until);
-    return {
-      idle,
-      periods: [
-        {
-          start_date_time: session.startTime,
-          dimensions: [
-            { type: "ENERGY", volume: session.kwh },
-            { type: "TIME", volume: secondsToHours(chargingSeconds) },
-          ],
-          tariff_id: session.tariffSnapshot!.id,
-        },
-        // Idle periods never reference a tariff: "" by agreement, it does not mean free (spec 2.3.1)
-        ...idle.periods.map((p) => ({
-          start_date_time: p.start.toISOString(),
-          dimensions: [
-            { type: "PARKING_TIME", volume: secondsToHours((p.end.getTime() - p.start.getTime()) / 1000) },
-          ],
-          tariff_id: "",
-        })),
-      ],
-    };
-  };
-
-  const buildSctSessionBase = (session: ActiveSessionState, countryCode: string, partyId: string) => {
+  const stopSimulatedCharging = async (evseUid: string) => { await runtimeRequest(evseUid, "stop"); };
+  const stopChargingForIdle = (evseUid: string) => { void runtimeRequest(evseUid, "stop").catch(console.error); };
+  const unplugVehicle = async (evseUid: string) => { await runtimeRequest(evseUid, "unplug"); };
+  const buildSctSessionPayload = (session: ActiveSessionState, chargingPeriods: unknown[], lastUpdated: string) => {
+    const { countryCode, partyId } = getLocCpoInfo(session.locationId);
     const emsp = emspsRef.current.find((e) => e.id === session.emspId);
-    const template = sessionTemplateRef.current;
     return {
-      country_code: countryCode,
-      party_id: partyId,
-      id: session.sessionId,
-      start_date_time: session.startTime,
-      kwh: session.kwh,
-      cdr_token: session.cdrToken || {
-        country_code: emsp?.countryCode || "TW",
-        party_id: emsp?.partyId || "EMS",
-        uid: session.tokenUid || template.cdr_token?.uid || "MANUAL-TOKEN-CPO",
-        type: template.cdr_token?.type || "RFID",
-        contract_id: template.cdr_token?.contract_id || "",
-      },
+      country_code: countryCode, party_id: partyId, id: session.sessionId,
+      start_date_time: session.startTime, kwh: session.kwh,
+      cdr_token: session.cdrToken || { country_code: emsp?.countryCode || "TW", party_id: emsp?.partyId || "EMS", uid: session.tokenUid || "MANUAL-TOKEN-CPO", type: "RFID", contract_id: "" },
       auth_method: session.authorizationReference ? "COMMAND" : "AUTH_REQUEST",
-      ...(session.authorizationReference
-        ? { authorization_reference: session.authorizationReference }
-        : {}),
-      location_id: session.locationId,
-      evse_uid: session.evseUid,
-      connector_id: String(template.connector_id || "1"),
-      currency: "TWD",
+      ...(session.authorizationReference ? { authorization_reference: session.authorizationReference } : {}),
+      location_id: session.locationId, evse_uid: session.evseUid, connector_id: String(sessionTemplateRef.current.connector_id || "1"), currency: "TWD",
+      charging_periods: chargingPeriods, total_cost: toOcpiPrice(session, session.cost),
+      status: session.status || "ACTIVE", last_updated: lastUpdated, emsp_id: session.emspId,
     };
-  };
-
-  // One OCPI 2.2.1 Session shape for every SCT update: start, charging telemetry and billing start
-  const buildSctSessionPayload = (
-    session: ActiveSessionState,
-    chargingPeriods: unknown[],
-    lastUpdated: string,
-  ) => {
-    const { countryCode, partyId } = getLocCpoInfo(session.locationId);
-    return {
-      ...buildSctSessionBase(session, countryCode, partyId),
-      charging_periods: chargingPeriods,
-      total_cost: toOcpiPrice(session, session.cost),
-      status: session.status || "ACTIVE",
-      last_updated: lastUpdated,
-      // Addresses the request to the owning eMSP; the HUB strips it before forwarding
-      emsp_id: session.emspId,
-    };
-  };
-
-  // Charging telemetry period, same dimensions as the other CPOs' sessions
-  const sctChargingPeriod = (session: ActiveSessionState) => ({
-    start_date_time: session.startTime,
-    dimensions: [
-      { type: "STATE_OF_CHARGE", volume: session.soc },
-      { type: "POWER", volume: session.kw },
-      { type: "ENERGY", volume: session.kwh },
-      { type: "CURRENT", volume: session.current },
-      { type: "VOLTAGE", volume: session.voltage },
-    ],
-    tariff_id: session.tariffSnapshot?.id,
-  });
-
-  // SCT spec 2.5.1: when the buffer expires, PUT the same session once, still ACTIVE, with the
-  // free buffer periods and a zero-volume billing period appended; total_cost stays the energy cost
-  const pushSctIdleBillingStart = async (evseUid: string) => {
-    const session = activeSessionsRef.current[evseUid];
-    if (!session || session.phase !== "IDLE" || session.idleBillingPushed || !session.chargingEndTime) return;
-
-    const bufferEnd = new Date(
-      new Date(session.chargingEndTime).getTime() + sctBufferMinutes() * 60 * 1000,
-    );
-    const pushedSession = { ...session, idleBillingPushed: true };
-    activeSessionsRef.current = { ...activeSessionsRef.current, [evseUid]: pushedSession };
-    setActiveChargingSessions(activeSessionsRef.current);
-
-    const { countryCode, partyId } = getLocCpoInfo(session.locationId);
-    const { periods } = buildSctChargingPeriods(session, bufferEnd);
-    const lastUpdated = bufferEnd.toISOString().replace(/\.\d{3}Z$/, "Z");
-    // last_updated is fixed to the billing start so a resend carries identical content
-    const payload = buildSctSessionPayload(
-      session,
-      [
-        ...periods,
-        {
-          start_date_time: bufferEnd.toISOString(),
-          dimensions: [{ type: "PARKING_TIME", volume: 0 }],
-          tariff_id: "",
-        },
-      ],
-      lastUpdated,
-    );
-
-    addLog(
-      "CPO_SIM",
-      "SCT_IDLE_BILLING_START",
-      `[星舟] Session ${session.sessionId} 緩衝到期，開始計收佔槍費 (推送一次 ACTIVE)`,
-      "warning",
-      payload,
-    );
-    await sendRequest(
-      `[SCT] Idle billing start [${session.sessionId}]`,
-      `/simulator/simulate/sessions/${countryCode}/${partyId}/${session.sessionId}`,
-      "POST",
-      payload,
-    );
-  };
-
-  // SCT: the vehicle is unplugged. Settle energy + idle fee, PATCH the session COMPLETED,
-  // then POST the single CDR (spec 2.5.2, 2.4)
-  const unplugVehicle = async (evseUid: string) => {
-    const session = activeSessionsRef.current[evseUid];
-    if (!session || session.billingProfile !== "SCT" || !session.tariffSnapshot) return;
-    if (finalizingSessionsRef.current.has(session.sessionId)) return;
-    finalizingSessionsRef.current.add(session.sessionId);
-
-    try {
-      const unplugTime = new Date();
-      const unplugIso = unplugTime.toISOString();
-      // Unplugging while still charging ends charging at the same moment: no idle time
-      const settledSession = { ...session, chargingEndTime: session.chargingEndTime || unplugIso };
-      const { countryCode, partyId } = getLocCpoInfo(session.locationId);
-      const { idle, periods } = buildSctChargingPeriods(settledSession, unplugTime);
-      const energyCost = computeSessionCost(session, session.kwh);
-      const totalCost = energyCost + idle.idleCost;
-
-      const patchRes = await sendRequest(
-        `[SCT] Session COMPLETED [${session.sessionId}]`,
-        `/simulator/simulate/sessions/patch/${countryCode}/${partyId}/${session.sessionId}`,
-        "POST",
-        {
-          status: "COMPLETED",
-          end_date_time: unplugIso,
-          kwh: session.kwh,
-          total_cost: toOcpiPrice(session, totalCost),
-          last_updated: unplugIso,
-          emsp_id: session.emspId,
-        },
-      );
-      // Spec 2.6: the session update must succeed before the CDR is sent
-      if (!patchRes.success) {
-        addLog(
-          "CPO_SIM",
-          "SCT_SESSION_PATCH_FAILED",
-          `[星舟] Session ${session.sessionId} COMPLETED 更新失敗，CDR 暫不送出；可再次按「拔槍」重送`,
-          "error",
-        );
-        return;
-      }
-
-      await handlePatchStatus(session.locationId, session.evseUid, "AVAILABLE");
-
-      const location = locationsRef.current.find((l) => l.id === session.locationId);
-      const evse = location?.evses.find((e) => e.uid === session.evseUid);
-      const connector = (evse?.connectors || evse?.rawJson?.connectors)?.[0] as
-        | { standard?: string; format?: string; power_type?: string }
-        | undefined;
-      const base = buildSctSessionBase(session, countryCode, partyId);
-
-      const newCdr = {
-        country_code: countryCode,
-        party_id: partyId,
-        id: generateRandomCdrId(),
-        session_id: session.sessionId,
-        start_date_time: session.startTime,
-        end_date_time: unplugIso,
-        cdr_token: base.cdr_token,
-        auth_method: base.auth_method,
-        ...(session.authorizationReference
-          ? { authorization_reference: session.authorizationReference }
-          : {}),
-        cdr_location: {
-          id: session.locationId,
-          name: location?.name || undefined,
-          address: location?.address,
-          city: location?.city,
-          postal_code: location?.postalCode || undefined,
-          country: location?.country,
-          coordinates: location?.coordinates,
-          evse_uid: session.evseUid,
-          evse_id: evse?.evse_id || session.evseUid,
-          connector_id: base.connector_id,
-          connector_standard: connector?.standard,
-          connector_format: connector?.format,
-          connector_power_type: connector?.power_type,
-        },
-        currency: "TWD",
-        // The full tariff accepted at start, all time slots included (spec 2.4.1)
-        tariffs: [session.tariffSnapshot],
-        charging_periods: periods,
-        total_cost: toOcpiPrice(session, totalCost),
-        total_energy: session.kwh,
-        total_energy_cost: toOcpiPrice(session, energyCost),
-        total_time: secondsToHours(
-          (unplugTime.getTime() - new Date(session.startTime).getTime()) / 1000,
-        ),
-        total_parking_time: secondsToHours(idle.idleSeconds),
-        total_parking_cost: toOcpiPrice(session, idle.idleCost),
-        last_updated: unplugIso,
-        emsp_id: session.emspId,
-      };
-
-      setCdrPayloadEdit(newCdr as unknown as OcpiCdr);
-      const cdrRes = await sendRequest(`[SCT] Post CDR`, "/simulator/simulate/cdrs", "POST", newCdr);
-      if (cdrRes.success) {
-        await transmitCdr(newCdr.id, newCdr as unknown as OcpiCdr);
-      }
-
-      releaseActiveChargingSession(session.evseUid, session.sessionId);
-      addLog(
-        "CPO_SIM",
-        "SCT_UNPLUGGED",
-        `[星舟] 拔槍結算 Session ${session.sessionId}：充電 NT$${energyCost} + 佔槍 NT$${idle.idleCost} = NT$${totalCost}`,
-        cdrRes.success ? "success" : "error",
-        newCdr,
-      );
-      await fetchDatabaseState();
-    } finally {
-      finalizingSessionsRef.current.delete(session.sessionId);
-    }
   };
 
   // Push CDR settlement invoice to matching EMSP via HUB
@@ -1950,246 +1483,21 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
     setNewToken("");
   };
 
-  // High-frequency Charging interval loop (runs every 1.5 seconds)
-  useEffect(() => {
-    const chargingTimer = setInterval(async () => {
-      const activeUids = Object.keys(activeChargingSessions);
-      if (activeUids.length === 0) return;
-
-      for (const uid of activeUids) {
-        const session = activeChargingSessions[uid];
-        // If automatic simulation is disabled, skip auto increment
-        if (session.isAuto === false) continue;
-        // Finished sessions are settled by updateSessionTelemetryAndSend, not the telemetry loop
-        if (session.status && session.status !== "ACTIVE") continue;
-        // SCT idle phase: charging is over, the idle ticker owns the session until unplug
-        if (session.phase === "IDLE") continue;
-
-        const powerKw = session.kw !== undefined ? session.kw : 120.0;
-        const maxSoc = 100.0;
-
-        // Add variance to power
-        const powerVar =
-          Math.round(powerKw * (0.85 + Math.random() * 0.15) * 10) / 10;
-        // speed up charging (1.5s is 1 minute, so factor is 1/60 hr)
-        const stepKwh = (powerVar / 3600) * 60;
-        const nextKwh = Math.round((session.kwh + stepKwh) * 100) / 100;
-        let nextSoc = session.soc + Math.round((stepKwh / 80) * 1000) / 10; // 80kWh battery
-
-        if (nextSoc >= maxSoc) {
-          nextSoc = maxSoc;
-        }
-
-        const nextCost = computeSessionCost(session, nextKwh);
-
-        // Auto Stop when charged to 100%
-        if (nextSoc === 100 && session.soc < 100) {
-          addLog(
-            "CPO_SIM",
-            "CHARGING_AUTO_STOP",
-            `充電樁 ${uid} 已充滿 100%`,
-            "success",
-          );
-          if (session.billingProfile === "SCT") {
-            // Full battery only ends charging; the car stays plugged in until unplugged
-            stopChargingForIdle(uid, { soc: 100.0, kwh: nextKwh, cost: nextCost });
-            return;
-          }
-          const finalSessionState = {
-            soc: 100.0,
-            kwh: nextKwh,
-            cost: nextCost,
-            kw: 0,
-            current: 0,
-            status: "COMPLETED" as const,
-          };
-          setTimeout(() => updateSessionTelemetryAndSend(uid, finalSessionState), 500);
-          return;
-        }
-
-        const currentVoltage = session.voltage || 400.0;
-        const currentAmp = Math.round(((powerVar * 1000) / currentVoltage) * 10) / 10;
-
-        // Update local session tracking state
-        setActiveChargingSessions((prev) => {
-          if (!prev[uid]) return prev;
-          return {
-            ...prev,
-            [uid]: {
-              ...prev[uid],
-              soc: Math.round(nextSoc * 10) / 10,
-              kwh: nextKwh,
-              cost: nextCost,
-              kw: powerVar,
-              current: currentAmp,
-            },
-          };
-        });
-
-        // Send telemetry Session PUT update to CPO receiver
-        const sessionPayload = session.billingProfile === "SCT"
-          ? (() => {
-              const tick = {
-                ...session,
-                soc: Math.round(nextSoc * 10) / 10,
-                kwh: nextKwh,
-                cost: nextCost,
-                kw: powerVar,
-                current: currentAmp,
-                voltage: currentVoltage,
-              };
-              return buildSctSessionPayload(tick, [sctChargingPeriod(tick)], new Date().toISOString());
-            })()
-          : {
-          id: session.sessionId,
-          start_date_time: session.startTime,
-          kwh: nextKwh,
-          location_id: session.locationId,
-          evse_uid: session.evseUid,
-          status: session.status || "ACTIVE",
-          total_cost: toOcpiPrice(session, nextCost),
-          charging_periods: [
-            {
-              start_date_time: session.startTime,
-              dimensions: [
-                { type: "STATE_OF_CHARGE", volume: Math.round(nextSoc * 10) / 10 },
-                { type: "POWER", volume: powerVar },
-                { type: "ENERGY", volume: nextKwh },
-                { type: "CURRENT", volume: currentAmp },
-                { type: "VOLTAGE", volume: currentVoltage }
-              ],
-              ...(session.tariffSnapshot ? { tariff_id: session.tariffSnapshot.id } : {}),
-            }
-          ],
-          last_updated: new Date().toISOString(),
-          emsp_id: session.emspId,
-          ...(session.authorizationReference
-            ? { authorization_reference: session.authorizationReference }
-            : {}),
-          ...sessionTemplateRef.current,
-        };
-
-        const { countryCode, partyId } = getLocCpoInfo(session.locationId);
-        // Sync with backend API silently
-        fetch(
-          `/simulator/simulate/sessions/${countryCode}/${partyId}/${session.sessionId}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(sessionPayload),
-          },
-        ).catch((err) => console.error("Telemetry sync error:", err));
-
-        // Randomly broadcast PUT session logs in terminal
-        if (Math.random() > 0.8) {
-          const matchedEmsp = emspsRef.current.find((e) => e.id === "EMSP-A");
-          addLog(
-            "HUB",
-            "ROUTING_SESSION_UPDATE",
-            `PUT Session: ${session.sessionId} -> 轉傳給 [${matchedEmsp?.name || "eMSP"}] (${Math.round(nextSoc * 10) / 10}%, ${nextKwh} kWh, $${nextCost} TWD)`,
-            "info",
-          );
-        }
-      }
-
-      fetchDatabaseState();
-    }, 1500); // 1.5s frequency
-
-    return () => clearInterval(chargingTimer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChargingSessions, locations, tariffPrice]);
-
-  // SCT idle ticker: push the one-time billing-start update when a free buffer expires
-  const pushSctIdleBillingStartRef = useRef(pushSctIdleBillingStart);
-  useEffect(() => {
-    pushSctIdleBillingStartRef.current = pushSctIdleBillingStart;
-  });
-  useEffect(() => {
-    const idleTimer = setInterval(() => {
-      const now = Date.now();
-      for (const [uid, session] of Object.entries(activeSessionsRef.current)) {
-        if (session.phase !== "IDLE" || session.idleBillingPushed || !session.chargingEndTime) continue;
-        const bufferEnd = new Date(session.chargingEndTime).getTime() + sctBufferMinutes() * 60 * 1000;
-        if (now >= bufferEnd) void pushSctIdleBillingStartRef.current(uid);
-      }
-    }, 1000);
-    return () => clearInterval(idleTimer);
-  }, []);
-
-  // The SSE listener is registered once, so route it through a ref to always call the latest handlers
-  const sseHandlersRef = useRef({ startSimulatedCharging, handleRemoteSessionStopped, stopChargingForIdle });
-  useEffect(() => {
-    sseHandlersRef.current = { startSimulatedCharging, handleRemoteSessionStopped, stopChargingForIdle };
-  });
-
-  // Server-Sent Events (SSE) Synchronization listener
+  // Reconnects receive a complete snapshot; no browser timers drive charging or forwarding.
   useEffect(() => {
     const eventSource = new EventSource("/simulator/events");
-
     eventSource.onmessage = (event) => {
       try {
         const parsed = JSON.parse(event.data);
-        console.log("SSE Event Received:", parsed);
-
-        if (parsed.type === "START_SESSION") {
-          const { location_id, evse_uid, authorization_reference, token, emsp_id } =
-            parsed.data;
-          const locId = location_id || "loc_001";
-          const evseU = evse_uid || "TW-CPO-EVSE-001";
-
-          if (!activeSessionsRef.current[evseU]) {
-            addLog(
-              "CPO_SIM",
-              "REMOTE_START",
-              `收到遠端啟動指令 via SSE: ${authorization_reference || "N/A"}`,
-              "info",
-              parsed.data,
-            );
-            sseHandlersRef.current.startSimulatedCharging(
-              locId,
-              evseU,
-              false,
-              null,
-              authorization_reference,
-              false,
-              token?.uid || "MANUAL-TOKEN-CPO",
-              emsp_id || null,
-              token?.uid
-                ? {
-                    country_code: token.country_code,
-                    party_id: token.party_id,
-                    uid: token.uid,
-                    type: token.type,
-                    contract_id: token.contract_id,
-                  }
-                : null,
-            );
-          }
-        } else if (parsed.type === "SESSION_STOPPED") {
-          void sseHandlersRef.current.handleRemoteSessionStopped(parsed.data);
-        } else if (parsed.type === "SESSION_CHARGING_STOPPED") {
-          // Idle-fee CPO (SCT): the eMSP stopped charging; the session waits for unplug
-          addLog(
-            "CPO_SIM",
-            "REMOTE_STOP",
-            `eMSP 遠端停止充電 Session ${parsed.data.session_id}，Session 維持 ACTIVE，等待拔槍`,
-            "info",
-            parsed.data,
-          );
-          sseHandlersRef.current.stopChargingForIdle(parsed.data.evse_uid);
+        if (parsed.type === "TELEMETRY_SNAPSHOT") {
+          activeSessionsRef.current = parsed.data;
+          setActiveChargingSessions(parsed.data);
+          void fetchDatabaseState();
         }
-      } catch (err) {
-        console.error("Failed to parse SSE command payload:", err);
-      }
+      } catch (error) { console.error("Invalid telemetry event", error); }
     };
-
-    eventSource.onerror = (err) => {
-      console.error("SSE connection error, attempting retry:", err);
-    };
-
-    return () => {
-      eventSource.close();
-    };
+    return () => eventSource.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -2228,8 +1536,6 @@ export function SimulatorProvider({ children }: { children: ReactNode }) {
         setCdrTemplate,
         updateSessionTelemetryAndSend,
         updateSessionTelemetryOnly,
-        releaseActiveChargingSession,
-        finalizeSessionWithCdr,
         stopChargingForIdle,
         unplugVehicle,
         tariffPrice,
